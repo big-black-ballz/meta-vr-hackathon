@@ -244,6 +244,10 @@ opencode debug skill
 | `npm run dev:collaborate` | Collaborate | Headed; you and the agent share the session |
 | `npm run dev:agent` | Agent | Headless, fixed 800x800 viewport |
 
+The first agent-mode launch can take 60–90 seconds while headless Chromium
+starts, so the scripts allow 120 seconds. If startup still times out, use
+`npm run dev:collaborate` or pass a larger `--timeout`.
+
 Wait for both readiness fields before issuing MCP commands:
 
 ```bash

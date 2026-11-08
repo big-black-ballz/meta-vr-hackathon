@@ -10,9 +10,9 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "iwsdk dev restart --open --foreground",
-    "dev:collaborate": "iwsdk dev restart --ai-mode collaborate --foreground",
-    "dev:agent": "iwsdk dev restart --ai-mode agent --foreground",
+    "dev": "iwsdk dev restart --open --foreground --timeout 120000",
+    "dev:collaborate": "iwsdk dev up --ai-mode collaborate --foreground --timeout 120000",
+    "dev:agent": "iwsdk dev up --ai-mode agent --foreground --timeout 120000",
     "dev:runtime": "vite",
     "dev:down": "iwsdk dev down",
     "dev:status": "iwsdk dev status",
