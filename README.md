@@ -160,8 +160,8 @@ in place; no separate config file needs editing.
 | `grabbing` | Picking up and moving virtual objects (already on) |
 | `physics` | Gravity, collisions, and physically driven grabbing |
 | `locomotion` | Teleport/slide movement in VR-style scenes. Add a `LocomotionEnvironment` component to walkable geometry or the player will fall through the world |
-| `sceneUnderstanding` | (on) Detects real walls; the wall ahead gets a scan highlight and a glowing pinch marker |
-| `environmentRaycast` | (on) Headset-gaze hit test that sticks the marker to the wall you look at |
+| `sceneUnderstanding` | (on) Maps your real walls as flat vertical planes and draws a subtle scan grid on each |
+| `environmentRaycast` | (off) Not needed for the wall scan; enable only for placing content on real surfaces |
 | `spatialUI` | Horizon-styled UIKit panels (already on) |
 
 > **MR tip:** passthrough itself does not require room setup. Plane/room data and
@@ -171,19 +171,20 @@ in place; no separate config file needs editing.
 
 ## Pinch dive (no UI boxes)
 
-Look at a wall and a glowing marker appears where your gaze lands. **Pinch**
-with your hand (or pull a controller trigger, or press **Space** on desktop) and
-a gooey deep-space portal spreads across the wall, then the whole room dissolves
-into deep space. Pinch / trigger / Space again to return.
+When the app starts it maps your real walls as vertical planes and paints a
+subtle cyan **scan grid** on every wall it can see. **Pinch** with your hand (or
+pull a controller trigger, or press **Space** on desktop) and a gooey deep-space
+portal grows out of **every mapped wall at once**, then the whole room slowly
+dissolves into deep space. Pinch / trigger / Space again to return.
 
 - State is mirrored to ECS for inspection: `DiveControl` (`Room`, `Dissolving`,
   `DeepSpace`, `Returning` + `progress`) and `WallPortal` (`Scanning`, `Goo`,
   `Open` + `goo`, `wallPoint`, `wallNormal`).
-- On a real headset, do **Space Setup** first (Quest Settings, or accept the
-  prompt in-headset) so the app can see your walls. Put the controllers down and
-  use your hands — pinch is the trigger.
-- Without real room data (desktop browser, IWER), a demo wall stands in so the
-  full loop still runs.
+- **Space Setup is required on the headset.** Quest Settings -> Boundary ->
+  Space Setup (or accept the in-headset prompt), then reload the page. Without a
+  room map the app falls back to four demo walls so the loop still works.
+- Detection quality depends on the room map: large flat walls bloom as one
+  portal each, and multiple detected segments bloom together.
 
 ## Deploying for judges or teammates
 

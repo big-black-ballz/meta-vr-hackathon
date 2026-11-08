@@ -10,22 +10,17 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
-  CircleGeometry,
   Color,
   createSystem,
   DoubleSide,
   Entity,
-  EnvironmentRaycastTarget,
   Mesh,
   MeshBasicMaterial,
   Object3D,
   PlaneGeometry,
   Points,
   PointsMaterial,
-  Pressed,
   Quaternion,
-  RaycastSpace,
-  RayInteractable,
   RingGeometry,
   ShaderMaterial,
   SphereGeometry,
@@ -39,13 +34,26 @@ import { WallPortal } from './wall-portal-component.js';
 type DivePhase = 'Room' | 'Dissolving' | 'DeepSpace' | 'Returning';
 type PortalPhase = 'Idle' | 'Scanning' | 'Goo' | 'Open';
 
-const DISSOLVE_SECONDS = 3;
-const RETURN_SECONDS = 2;
-const GOO_SECONDS = 2.2;
+const GOO_SECONDS = 4.5;
+const DISSOLVE_SECONDS = 5;
+const RETURN_SECONDS = 3;
 const RING_COUNT = 2;
+const WALL_OFFSET = 0.012;
+
+interface WallPatch {
+  entity: Entity;
+  obj: Mesh;
+  localCenter: Vector3;
+  width: number;
+  height: number;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
 
 function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
+  return clamp(v, 0, 1);
 }
 
 function smoothstep(edge0: number, edge1: number, v: number): number {
@@ -85,7 +93,7 @@ void main() {
 }
 `;
 
-const GOO_VERTEX = `
+const WALL_VERTEX = `
 varying vec2 vUv;
 void main() {
   vUv = uv;
@@ -93,9 +101,12 @@ void main() {
 }
 `;
 
-const GOO_FRAGMENT = `
+// One material shared by every wall patch. uScan draws the subtle wall grid
+// while the app is mapping surfaces; uGoo grows the organic space portal.
+const WALL_FRAGMENT = `
 uniform float uGoo;
 uniform float uTime;
+uniform float uScan;
 varying vec2 vUv;
 
 float hash(vec2 p) {
@@ -106,34 +117,51 @@ void main() {
   vec2 c = vUv - vec2(0.5);
   float r = length(c) * 2.0;
   float a = atan(c.y, c.x);
+
   float wobble = sin(a * 5.0 + uTime * 2.2) * 0.5
     + sin(a * 9.0 - uTime * 3.1) * 0.3
     + sin(a * 3.0 + uTime * 1.4) * 0.2;
   float edge = uGoo * (1.0 + 0.16 * wobble);
-  float alpha = 1.0 - smoothstep(edge - 0.12, edge, r);
+  float gooAlpha = 1.0 - smoothstep(edge - 0.12, edge, r);
+
+  vec2 grid = abs(fract(vUv * vec2(12.0, 8.0)) - 0.5);
+  float border = max(grid.x, grid.y);
+  float line = smoothstep(0.42, 0.5, border);
+  float scanAlpha = line * uScan
+    * (0.16 + 0.08 * sin(uTime * 1.6 + vUv.x * 7.0 + vUv.y * 5.0));
+
+  float alpha = max(gooAlpha, scanAlpha);
   if (alpha < 0.004) {
     discard;
   }
+
   float h = clamp(0.5 - c.y, 0.0, 1.0);
   vec3 deep = mix(vec3(0.02, 0.01, 0.07), vec3(0.10, 0.03, 0.22), h);
-  vec2 g = floor(vUv * 90.0);
-  float star = step(0.978, hash(g)) * (0.5 + 0.5 * sin(uTime * 3.0 + hash(g + 7.0) * 6.28));
-  float rim = smoothstep(edge - 0.16, edge - 0.02, r) * (1.0 - smoothstep(edge - 0.02, edge, r));
-  vec3 col = deep + vec3(0.9, 0.95, 1.0) * star + vec3(0.25, 0.8, 1.0) * rim * 0.9;
-  gl_FragColor = vec4(col, alpha);
+  vec2 cell = fract(vUv * 140.0) - 0.5;
+  float star = step(0.985, hash(floor(vUv * 140.0)))
+    * smoothstep(0.16, 0.0, length(cell))
+    * (0.5 + 0.5 * sin(uTime * 3.0 + hash(floor(vUv * 140.0)) * 6.28));
+  float rim = smoothstep(edge - 0.16, edge - 0.02, r)
+    * (1.0 - smoothstep(edge - 0.02, edge, r));
+  vec3 gooColor = deep
+    + vec3(0.9, 0.95, 1.0) * star
+    + vec3(0.25, 0.8, 1.0) * rim * 0.9;
+  vec3 scanColor = vec3(0.25, 0.85, 1.0);
+
+  vec3 color = mix(scanColor, gooColor, clamp(gooAlpha * 3.0, 0.0, 1.0));
+  gl_FragColor = vec4(color, alpha);
 }
 `;
 
 /**
- * Wall-scan pinch dive: finds the vertical real-world wall ahead, marks it
- * with a pulsing orb, and on pinch (or trigger / mouse press) grows a gooey
- * deep-space portal on the wall that hands off to the full-space transition.
+ * Wall-driven pinch dive. Vertical XR planes are mapped into visible scan
+ * grids; pinching grows a gooey space portal from every detected wall at once,
+ * then the room dissolves into deep space.
  */
 export class DiveSystem extends createSystem({
   dive: { required: [DiveControl] },
   portal: { required: [WallPortal] },
   walls: { required: [XRPlane] },
-  pressed: { required: [Pressed] },
 }) {
   private phase: DivePhase = 'Room';
   private progress = 0;
@@ -143,110 +171,71 @@ export class DiveSystem extends createSystem({
   private diveEntity: Entity | undefined;
   private portalEntity: Entity | undefined;
 
-  private markerEntity: Entity | undefined;
-  private markerObj: Object3D | undefined;
-  private markerMat: MeshBasicMaterial | undefined;
-  private hitEntity: Entity | undefined;
-
-  private portalObj: Object3D | undefined;
-  private portalMat: ShaderMaterial | undefined;
-
-  private fallbackWallObj: Object3D | undefined;
-
-  private frontWall: Entity | undefined;
-  private frontWallOriginalMaterial: unknown;
-  private highlightMat: MeshBasicMaterial | undefined;
+  private patchGeometry!: PlaneGeometry;
+  private patchMaterial!: ShaderMaterial;
+  private patches = new Map<Entity, WallPatch>();
+  private fallbackPatches: WallPatch[] = [];
+  private fallbackCenter = new Vector3();
+  private noWallSeconds = 0;
+  private noWallWarned = false;
+  private patchCounter = 0;
 
   private domeObj!: Object3D;
   private domeMat!: ShaderMaterial;
-  private domeEntity: Entity | undefined;
   private starsObj!: Object3D;
   private starsMat!: PointsMaterial;
   private ringObjs: Object3D[] = [];
   private ringMats: MeshBasicMaterial[] = [];
 
-  private wallPoint = new Vector3(0, 1.5, -2.5);
-  private wallNormal = new Vector3(0, 0, 1);
   private tmpA = new Vector3();
   private tmpB = new Vector3();
   private tmpC = new Vector3();
-  private tmpForward = new Vector3();
+  private tmpHead = new Vector3();
   private tmpQuat = new Quaternion();
+  private tmpQuatFlip = new Quaternion();
+  private nearestPoint = new Vector3();
+  private nearestNormal = new Vector3();
   private elapsed = 0;
 
   init(): void {
     this.diveEntity = this.queries.dive.entities.values().next().value;
     this.portalEntity = this.queries.portal.entities.values().next().value;
 
-    const hitObj = new Object3D();
-    this.hitEntity = this.world.createTransformEntity(hitObj);
-    this.hitEntity.addComponent(EnvironmentRaycastTarget, {
-      space: RaycastSpace.Viewer,
-      maxDistance: 12,
-    });
-
-    const markerMat = new MeshBasicMaterial({
-      color: new Color(0x46e0ff),
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-    });
-    this.markerMat = markerMat;
-    const marker = new Mesh(new SphereGeometry(0.055, 20, 14), markerMat);
-    const markerEntity = this.world.createTransformEntity(marker);
-    markerEntity.addComponent(RayInteractable);
-    if (markerEntity.object3D != null) {
-      this.markerEntity = markerEntity;
-      this.markerObj = markerEntity.object3D;
-      this.markerObj.name = 'wall-marker';
-      this.markerObj.position.copy(this.wallPoint);
-    }
-
-    this.portalMat = new ShaderMaterial({
+    this.patchGeometry = new PlaneGeometry(1, 1);
+    this.patchMaterial = new ShaderMaterial({
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
       uniforms: {
         uGoo: { value: 0 },
         uTime: { value: 0 },
+        uScan: { value: 1 },
       },
-      vertexShader: GOO_VERTEX,
-      fragmentShader: GOO_FRAGMENT,
+      vertexShader: WALL_VERTEX,
+      fragmentShader: WALL_FRAGMENT,
     });
-    const portal = new Mesh(new CircleGeometry(1, 48), this.portalMat);
-    const portalEntity = this.world.createTransformEntity(portal);
-    if (portalEntity.object3D != null) {
-      this.portalObj = portalEntity.object3D;
-      this.portalObj.name = 'wall-portal';
-      this.portalObj.visible = false;
-    }
-
-    const fallbackMat = new MeshBasicMaterial({
-      color: new Color(0x5a6b8c),
-      transparent: true,
-      opacity: 0.35,
-      side: DoubleSide,
-      depthWrite: false,
-    });
-    const fallback = new Mesh(new PlaneGeometry(4, 2.5), fallbackMat);
-    const fallbackEntity = this.world.createTransformEntity(fallback);
-    if (fallbackEntity.object3D != null) {
-      this.fallbackWallObj = fallbackEntity.object3D;
-      this.fallbackWallObj.name = 'fallback-wall';
-      this.fallbackWallObj.position.set(0, 1.4, -2.5);
-      this.fallbackWallObj.visible = false;
-    }
-
-    this.highlightMat = new MeshBasicMaterial({
-      color: new Color(0x46e0ff),
-      transparent: true,
-      opacity: 0.22,
-      side: DoubleSide,
-      depthWrite: false,
-    });
+    this.tmpQuatFlip.setFromAxisAngle(new Vector3(0, 1, 0), Math.PI);
 
     this.buildDeepSpace();
-    this.queries.pressed.subscribe('qualify', (entity) => this.onPressed(entity));
+
+    this.cleanupFuncs.push(
+      this.queries.walls.subscribe('qualify', (entity) =>
+        this.ensurePatch(entity),
+      ),
+      this.queries.walls.subscribe('disqualify', (entity) =>
+        this.removePatch(entity),
+      ),
+      () => {
+        for (const entity of [...this.patches.keys()]) {
+          this.removePatch(entity);
+        }
+        this.disposeFallback();
+        this.patchGeometry.dispose();
+        this.patchMaterial.dispose();
+      },
+    );
+
+    this.queries.walls.entities.forEach((entity) => this.ensurePatch(entity));
     this.setPortalPhase('Scanning');
     this.setPhase('Room');
   }
@@ -269,8 +258,6 @@ export class DiveSystem extends createSystem({
     if (domeEntity.object3D == null) {
       return;
     }
-    domeEntity.addComponent(RayInteractable);
-    this.domeEntity = domeEntity;
     this.domeObj = domeEntity.object3D;
     this.domeObj.name = 'dive-dome';
     this.domeObj.position.set(0, 1.5, 0);
@@ -335,59 +322,147 @@ export class DiveSystem extends createSystem({
     }
   }
 
-  private onPressed(entity: Entity): void {
-    if (this.markerEntity != null && entity === this.markerEntity) {
-      if (this.phase === 'Room') {
-        this.requestDive();
-      }
+  private ensurePatch(planeEntity: Entity): void {
+    if (this.patches.has(planeEntity)) {
       return;
     }
-    if (this.domeEntity != null && entity === this.domeEntity) {
-      if (this.phase === 'DeepSpace') {
-        this.requestReturn();
-      }
-    }
-  }
-
-  private requestDive(): void {
-    if (this.phase !== 'Room') {
+    const plane = planeEntity.getValue(XRPlane, '_plane') as
+      | { orientation?: string }
+      | undefined;
+    if (plane?.orientation !== 'vertical') {
       return;
     }
-    this.snapRingsToHead();
-    this.placePortal();
-    this.setPortalPhase('Goo');
-  }
-
-  private requestReturn(): void {
-    if (this.phase !== 'DeepSpace') {
+    const planeObject = planeEntity.object3D;
+    if (!(planeObject instanceof Mesh)) {
       return;
     }
-    this.setPhase('Returning');
-    this.setPortalPhase('Scanning');
+    const geometry = planeObject.geometry;
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    if (box == null) {
+      return;
+    }
+    const size = box.getSize(new Vector3());
+    const localCenter = box.getCenter(new Vector3());
+    const width = clamp(size.x, 1.2, 8);
+    const height = clamp(size.y, 1.0, 5);
+
+    const patch = new Mesh(this.patchGeometry, this.patchMaterial);
+    patch.name = `wall-goo-${this.patchCounter++}`;
+    const entity = this.world.createTransformEntity(patch);
+    if (entity.object3D == null) {
+      return;
+    }
+    this.patches.set(planeEntity, {
+      entity,
+      obj: patch,
+      localCenter,
+      width,
+      height,
+    });
+    this.syncPatch(planeEntity);
   }
 
-  private snapRingsToHead(): void {
+  private removePatch(planeEntity: Entity): void {
+    const patch = this.patches.get(planeEntity);
+    if (patch == null) {
+      return;
+    }
+    patch.entity.destroy();
+    this.patches.delete(planeEntity);
+  }
+
+  // Move every wall patch onto its plane's current world pose and keep the
+  // visible face turned toward the viewer.
+  private syncPatch(planeEntity: Entity): void {
+    const patch = this.patches.get(planeEntity);
+    const planeObject = planeEntity.object3D;
+    const head = this.player.head;
+    if (patch == null || planeObject == null || head == null) {
+      return;
+    }
+    planeObject.updateWorldMatrix(true, false);
+    head.updateWorldMatrix(true, false);
+    this.tmpHead.setFromMatrixPosition(head.matrixWorld);
+
+    this.tmpA.copy(patch.localCenter).applyMatrix4(planeObject.matrixWorld);
+    this.tmpQuat.setFromRotationMatrix(planeObject.matrixWorld);
+    this.tmpB.set(0, 0, 1).applyQuaternion(this.tmpQuat);
+    this.tmpC.copy(this.tmpHead).sub(this.tmpA);
+    if (this.tmpB.dot(this.tmpC) < 0) {
+      this.tmpQuat.multiply(this.tmpQuatFlip);
+      this.tmpB.negate();
+    }
+    patch.obj.position.copy(this.tmpA).addScaledVector(this.tmpB, WALL_OFFSET);
+    patch.obj.quaternion.copy(this.tmpQuat);
+    patch.obj.scale.set(patch.width, patch.height, 1);
+  }
+
+  private ensureFallback(): void {
     const head = this.player.head;
     if (head == null) {
       return;
     }
     head.updateWorldMatrix(true, false);
-    this.tmpA.setFromMatrixPosition(head.matrixWorld);
-    for (const ring of this.ringObjs) {
-      ring.position.set(this.tmpA.x, 1.2, this.tmpA.z);
+    this.tmpHead.setFromMatrixPosition(head.matrixWorld);
+    if (
+      this.fallbackPatches.length > 0 &&
+      this.fallbackCenter.distanceToSquared(this.tmpHead) < 0.36
+    ) {
+      return;
+    }
+    this.disposeFallback();
+    this.fallbackCenter.copy(this.tmpHead);
+
+    const y = 1.4;
+    const d = 2.8;
+    const width = 4.5;
+    const height = 2.6;
+    const specs: Array<[number, number, number, Quaternion]> = [
+      [0, y, -d, new Quaternion()],
+      [0, y, d, new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI)],
+      [
+        -d,
+        y,
+        0,
+        new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2),
+      ],
+      [
+        d,
+        y,
+        0,
+        new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -Math.PI / 2),
+      ],
+    ];
+    for (const [px, , pz, quat] of specs) {
+      const patch = new Mesh(this.patchGeometry, this.patchMaterial);
+      patch.name = `wall-goo-fallback-${this.patchCounter++}`;
+      patch.position.set(
+        this.tmpHead.x + px,
+        this.tmpHead.y - 0.2,
+        this.tmpHead.z + pz,
+      );
+      patch.quaternion.copy(quat);
+      patch.scale.set(width, height, 1);
+      const entity = this.world.createTransformEntity(patch);
+      if (entity.object3D == null) {
+        continue;
+      }
+      this.fallbackPatches.push({
+        entity,
+        obj: patch,
+        localCenter: new Vector3(),
+        width,
+        height,
+      });
     }
   }
 
-  private placePortal(): void {
-    if (this.portalObj == null) {
-      return;
+  private disposeFallback(): void {
+    for (const patch of this.fallbackPatches) {
+      patch.entity.destroy();
     }
-    this.portalObj.position
-      .copy(this.wallPoint)
-      .addScaledVector(this.wallNormal, 0.02);
-    this.tmpA.copy(this.wallPoint).add(this.wallNormal);
-    this.portalObj.lookAt(this.tmpA);
-    this.portalObj.visible = true;
+    this.fallbackPatches.length = 0;
   }
 
   private setPhase(phase: DivePhase): void {
@@ -402,13 +477,42 @@ export class DiveSystem extends createSystem({
     this.portalEntity?.setValue(WallPortal, 'goo', this.goo);
   }
 
+  private requestDive(): void {
+    if (this.phase !== 'Room') {
+      return;
+    }
+    this.goo = 0;
+    this.snapRingsToHead();
+    this.setPortalPhase('Goo');
+  }
+
+  private requestReturn(): void {
+    if (this.phase !== 'DeepSpace') {
+      return;
+    }
+    this.setPortalPhase('Scanning');
+    this.setPhase('Returning');
+  }
+
+  private snapRingsToHead(): void {
+    const head = this.player.head;
+    if (head == null) {
+      return;
+    }
+    head.updateWorldMatrix(true, false);
+    this.tmpA.setFromMatrixPosition(head.matrixWorld);
+    for (const ring of this.ringObjs) {
+      ring.position.set(this.tmpA.x, 1.2, this.tmpA.z);
+    }
+  }
+
   update(delta: number): void {
     if (this.world.visibilityState.peek() === VisibilityState.VisibleBlurred) {
       return;
     }
     this.elapsed += delta;
 
-    this.scanWalls();
+    this.syncWalls(delta);
 
     const leftSelect = this.input.gamepads.left?.getSelectStart() === true;
     const rightSelect = this.input.gamepads.right?.getSelectStart() === true;
@@ -424,7 +528,7 @@ export class DiveSystem extends createSystem({
     if (this.portalPhase === 'Goo') {
       this.goo = Math.min(1, this.goo + delta / GOO_SECONDS);
       this.portalEntity?.setValue(WallPortal, 'goo', this.goo);
-      if (this.goo >= 1) {
+      if (this.goo >= 0.85 && this.phase === 'Room') {
         this.setPortalPhase('Open');
         this.setPhase('Dissolving');
       }
@@ -437,9 +541,12 @@ export class DiveSystem extends createSystem({
       }
     } else if (this.phase === 'Returning') {
       this.progress = Math.max(0, this.progress - delta / RETURN_SECONDS);
+      this.goo = Math.max(0, this.goo - delta / RETURN_SECONDS);
+      this.portalEntity?.setValue(WallPortal, 'goo', this.goo);
       if (this.progress <= 0) {
         this.goo = 0;
         this.portalEntity?.setValue(WallPortal, 'goo', 0);
+        this.setPortalPhase('Scanning');
         this.setPhase('Room');
       }
     }
@@ -447,139 +554,111 @@ export class DiveSystem extends createSystem({
     this.driveVisuals(delta);
   }
 
-  private scanWalls(): void {
+  private syncWalls(delta: number): void {
     const head = this.player.head;
     if (head == null) {
       return;
     }
     head.updateWorldMatrix(true, false);
-    this.tmpB.setFromMatrixPosition(head.matrixWorld);
-    head.getWorldQuaternion(this.tmpQuat);
-    this.tmpForward.set(0, 0, -1).applyQuaternion(this.tmpQuat);
+    this.tmpHead.setFromMatrixPosition(head.matrixWorld);
 
-    let best: Entity | undefined;
-    let bestDist = Infinity;
-    for (const entity of this.queries.walls.entities) {
-      const native = entity.getValue(XRPlane, '_plane') as
+    let hasVertical = false;
+    let nearestDist = Infinity;
+    let foundNearest = false;
+
+    for (const planeEntity of this.queries.walls.entities) {
+      const plane = planeEntity.getValue(XRPlane, '_plane') as
         | { orientation?: string }
         | undefined;
-      if (native?.orientation !== 'vertical') {
+      if (plane?.orientation !== 'vertical') {
         continue;
       }
-      const obj = entity.object3D;
-      if (obj == null) {
+      hasVertical = true;
+      if (!this.patches.has(planeEntity)) {
+        this.ensurePatch(planeEntity);
+      }
+      this.syncPatch(planeEntity);
+      const patch = this.patches.get(planeEntity);
+      if (patch == null) {
         continue;
       }
-      obj.updateWorldMatrix(true, false);
-      this.tmpA.setFromMatrixPosition(obj.matrixWorld).sub(this.tmpB);
-      const dist = this.tmpA.length();
-      this.tmpA.normalize();
-      if (this.tmpA.dot(this.tmpForward) < 0.5) {
-        continue;
-      }
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = entity;
+      const dist = patch.obj.position.distanceToSquared(this.tmpHead);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        foundNearest = true;
+        this.nearestPoint.copy(patch.obj.position);
+        this.nearestNormal
+          .set(0, 0, 1)
+          .applyQuaternion(patch.obj.quaternion);
       }
     }
 
-    if (best !== this.frontWall) {
-      this.restoreWallMaterial();
-      this.frontWall = best;
-    }
-
-    const roomPhase = this.phase === 'Room';
-
-    if (this.frontWall != null) {
-      const obj = this.frontWall.object3D;
-      if (obj != null && obj instanceof Mesh) {
-        if (this.frontWallOriginalMaterial === undefined) {
-          this.frontWallOriginalMaterial = obj.material;
-        }
-        if (obj.material !== this.highlightMat && this.highlightMat != null) {
-          obj.material = this.highlightMat as unknown as typeof obj.material;
-        }
+    if (hasVertical) {
+      this.noWallSeconds = 0;
+      this.disposeFallback();
+    } else {
+      this.noWallSeconds += delta;
+      const immersive =
+        this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+      if (!immersive || this.noWallSeconds > 1.5) {
+        this.ensureFallback();
       }
-      obj?.updateWorldMatrix(true, false);
-      if (obj != null) {
-        this.tmpA.setFromMatrixPosition(obj.matrixWorld);
-        obj.getWorldQuaternion(this.tmpQuat);
-        this.tmpC.set(0, 0, 1).applyQuaternion(this.tmpQuat);
-        this.tmpForward.copy(this.tmpB).sub(this.tmpA);
-        if (this.tmpC.dot(this.tmpForward) < 0) {
-          this.tmpC.negate();
-        }
-        this.wallPoint.copy(this.tmpA);
-        this.wallNormal.copy(this.tmpC);
-      }
-    }
-
-    const hitValid =
-      this.hitEntity?.getValue(EnvironmentRaycastTarget, 'xrHitTestResult') !=
-      null;
-    if (this.markerObj != null) {
-      const showMarker = roomPhase;
-      this.markerObj.visible = showMarker;
-      if (showMarker) {
-        if (hitValid && this.hitEntity?.object3D != null) {
-          this.markerObj.position.copy(this.hitEntity.object3D.position);
-          this.wallPoint.copy(this.markerObj.position);
-          if (this.hitEntity.object3D.quaternion != null) {
-            this.tmpC
-              .set(0, 0, 1)
-              .applyQuaternion(this.hitEntity.object3D.quaternion);
-            this.wallNormal.copy(this.tmpC);
-          }
-        } else if (this.frontWall == null) {
-          this.markerObj.position.set(0, 1.4, -2.5);
-          this.wallPoint.set(0, 1.4, -2.5);
-          this.wallNormal.set(0, 0, 1);
-        }
-        const s = 1 + 0.18 * Math.sin(this.elapsed * 4);
-        this.markerObj.scale.set(s, s, s);
+      if (immersive && !this.noWallWarned && this.noWallSeconds > 3) {
+        this.noWallWarned = true;
+        console.warn(
+          '[Dive] No vertical walls detected. Complete Space Setup so the app can scan your room.',
+        );
       }
     }
 
     if (this.portalEntity != null) {
       const view = this.portalEntity.getVectorView(WallPortal, 'wallPoint');
-      view[0] = this.wallPoint.x;
-      view[1] = this.wallPoint.y;
-      view[2] = this.wallPoint.z;
-      const nview = this.portalEntity.getVectorView(WallPortal, 'wallNormal');
-      nview[0] = this.wallNormal.x;
-      nview[1] = this.wallNormal.y;
-      nview[2] = this.wallNormal.z;
-    }
-
-    if (this.fallbackWallObj != null) {
-      this.fallbackWallObj.visible = roomPhase && this.frontWall == null;
-    }
-  }
-
-  private restoreWallMaterial(): void {
-    if (
-      this.frontWall != null &&
-      this.frontWallOriginalMaterial !== undefined
-    ) {
-      const obj = this.frontWall.object3D;
-      if (obj != null && obj instanceof Mesh) {
-        obj.material =
-          this.frontWallOriginalMaterial as unknown as typeof obj.material;
+      const normal = this.portalEntity.getVectorView(WallPortal, 'wallNormal');
+      if (foundNearest) {
+        view[0] = this.nearestPoint.x;
+        view[1] = this.nearestPoint.y;
+        view[2] = this.nearestPoint.z;
+        normal[0] = this.nearestNormal.x;
+        normal[1] = this.nearestNormal.y;
+        normal[2] = this.nearestNormal.z;
+      } else {
+        view[0] = this.tmpHead.x;
+        view[1] = 1.4;
+        view[2] = this.tmpHead.z - 2.8;
+        normal[0] = 0;
+        normal[1] = 0;
+        normal[2] = 1;
       }
     }
-    this.frontWall = undefined;
-    this.frontWallOriginalMaterial = undefined;
   }
 
   private driveVisuals(delta: number): void {
     const p = this.progress;
 
-    const domeMix = smoothstep(0.2, 0.95, p);
+    const scan =
+      this.phase === 'Room'
+        ? 1
+        : this.phase === 'Returning'
+          ? smoothstep(0.55, 0, this.goo)
+          : 0;
+    this.patchMaterial.uniforms['uGoo'].value = this.goo;
+    this.patchMaterial.uniforms['uScan'].value = scan;
+    this.patchMaterial.uniforms['uTime'].value += delta;
+
+    const patchesVisible = this.phase !== 'DeepSpace';
+    for (const patch of this.patches.values()) {
+      patch.obj.visible = patchesVisible;
+    }
+    for (const patch of this.fallbackPatches) {
+      patch.obj.visible = patchesVisible;
+    }
+
+    const domeMix = smoothstep(0.05, 1, p);
     this.domeMat.uniforms['uMix'].value = domeMix;
     this.domeMat.uniforms['uTime'].value += delta;
     this.domeObj.visible = domeMix > 0.002;
 
-    const starOpacity = smoothstep(0.45, 1, p);
+    const starOpacity = smoothstep(0.35, 1, p);
     this.starsMat.opacity = starOpacity;
     this.starsObj.visible = starOpacity > 0.002;
     if (this.starsObj.visible) {
@@ -592,33 +671,8 @@ export class DiveSystem extends createSystem({
       const rp = clamp01((p - i * 0.18) / 0.55);
       const s = 0.6 + easeOutCubic(rp) * 7.5;
       this.ringObjs[i].scale.set(s, s, s);
-      this.ringMats[i].opacity = transitioning ? (1 - rp) * 0.7 : 0;
+      this.ringMats[i].opacity = transitioning ? (1 - rp) * 0.55 : 0;
       this.ringObjs[i].visible = transitioning && rp < 1;
-    }
-
-    if (this.portalObj != null && this.portalMat != null) {
-      const gooing = this.portalPhase === 'Goo';
-      const open = this.portalPhase === 'Open';
-      this.portalMat.uniforms['uGoo'].value = this.goo;
-      this.portalMat.uniforms['uTime'].value += delta;
-      if (gooing) {
-        const s = 0.25 + easeOutCubic(this.goo) * 1.5;
-        this.portalObj.scale.set(s, s, s);
-        this.portalObj.visible = true;
-      } else if (open && this.phase === 'Dissolving') {
-        const s = 1.75 + easeOutCubic(p) * 4;
-        this.portalObj.scale.set(s, s, s);
-        this.portalObj.visible = p < 0.85;
-      } else {
-        this.portalObj.visible = false;
-      }
-    }
-
-    if (this.markerMat != null) {
-      this.markerMat.opacity = 0.75 + 0.2 * Math.sin(this.elapsed * 4);
-    }
-    if (this.highlightMat != null && this.frontWall != null) {
-      this.highlightMat.opacity = 0.18 + 0.08 * Math.sin(this.elapsed * 2.5);
     }
   }
 }
