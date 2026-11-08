@@ -77,7 +77,9 @@ with ADB and open `https://localhost:5173` on the headset instead:
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Start the managed dev server and open the managed browser |
+| `npm run dev` | Start the managed workspace (headed, resizable) |
+| `npm run dev:collaborate` | Start an AI **collaborate** session (headed, shared with you) |
+| `npm run dev:agent` | Start an AI **agent** session (headless, fixed 800x800 viewport) |
 | `npm run dev:status` | Show runtime URL, port, and adapter/bridge state |
 | `npm run dev:down` | Stop a managed session running in the background |
 | `npm run typecheck` | Type-check with `tsc --noEmit` |
@@ -195,20 +197,131 @@ produce an HTTPS URL you can open directly in Quest Browser.
 | Sluggish frame rate | Quest Browser defaults to 72 Hz. Keep draw calls under ~100 on Quest 3, compress textures (KTX2/Basis), and avoid per-frame allocations |
 | Types pass but a system never runs | Check the browser console with no level filter, then confirm the entity and components with the IWSDK ECS tools |
 
-## AI-assisted development
+## Agentic coding with OpenCode
 
-This repo ships IWSDK's agent skills and rules for OpenCode, Claude Code, Cursor,
-Copilot, and Codex. If you use an AI coding agent:
+This template is wired for OpenCode out of the box.
 
-1. Read `AGENTS.md` first — IWSDK is **not** standard Vite in several important
-   ways (config authority, virtual modules, managed dev server).
-2. Invoke the `iwsdk-dev` skill before building, extending, or fixing the app.
-3. Let the agent use `@iwsdk/cli` / MCP tools to inspect the live scene instead
-   of guessing.
+### MCP servers
 
-`opencode.json` is machine-generated with absolute paths and is intentionally
-gitignored, like the other harness MCP configs. Use the CLI directly
-(`npx @iwsdk/cli ...`) or regenerate your own harness config.
+`opencode.json` registers three local MCP servers:
+
+| Server | What the agent gets |
+| --- | --- |
+| `iwsdk-runtime` | 45 tools: XR session/input, browser evidence, native scene authoring, UIKitML previews, and ECS inspection |
+| `iwsdk-reference` | IWSDK reference and asset discovery |
+| `metavr` | Meta docs search, device control, logs, screenshots, and performance tracing |
+
+Verify the connections from the project root:
+
+```bash
+opencode mcp list
+```
+
+### Skills and instructions
+
+OpenCode auto-discovers the IWSDK skills in `.agents/skills/` (project
+compatibility), including `iwsdk-dev`, `iwsdk-build-model`,
+`iwsdk-compose-scene`, `iwsdk-ui`, `iwsdk-physics`, `iwsdk-grab`, `iwsdk-ray`,
+`iwsdk-debug`, `iwsdk-depth-occlusion`, `iwsdk-hosting`,
+`iwsdk-native-xr-test`, and `iwsdk-pwa-packaging`.
+
+The root `AGENTS.md` is loaded automatically, along with the scoped
+`src/AGENTS.md`, `public/scenes/AGENTS.md`, and `public/ui/AGENTS.md` files.
+Read `AGENTS.md` first: IWSDK is **not** standard Vite in several important ways
+(config authority, virtual modules, managed dev server).
+
+Confirm skill discovery:
+
+```bash
+opencode debug skill
+```
+
+### Start an AI session
+
+| Command | Mode | Browser |
+| --- | --- | --- |
+| `npm run dev` | Workspace-only | Headed, resizable |
+| `npm run dev:collaborate` | Collaborate | Headed; you and the agent share the session |
+| `npm run dev:agent` | Agent | Headless, fixed 800x800 viewport |
+
+Wait for both readiness fields before issuing MCP commands:
+
+```bash
+npm run dev:status
+```
+
+`state.browserCommandReady` and `state.session.browser.commandReady` must both
+be `true`. An HTTP response alone does not mean the browser bridge is ready.
+
+Inspect the installed tool contract:
+
+```bash
+npx iwsdk mcp inspect
+npx iwsdk mcp inspect --tool scene_render_file
+```
+
+### First request
+
+> Use the IWSDK runtime tools to check the XR session, capture the application
+> runtime, and report any console errors.
+
+This should call `xr_get_session_status`, `browser_screenshot`, and
+`browser_get_console_logs`. A screenshot taken through `browser_screenshot`
+always captures the running app, even when the Editor view is visible.
+
+### Verified workflows
+
+**Runtime behavior**
+
+1. `browser_get_console_logs` and record the initial errors.
+2. Edit source, then `browser_reload_page`.
+3. Wait for command readiness again.
+4. Exercise the behavior through XR or ECS tools.
+5. `browser_screenshot` and read the logs again.
+
+**Native scene authoring**
+
+1. `scene_get_capabilities({ full: true })`.
+2. Edit `public/scenes/*.iwsdk.scene.json` with normal file tools.
+3. `scene_render_file` for every changed module, then the composed root.
+4. `scene_flatten_file` once to the path named by `iwsdk.config.json`.
+5. `scene_open` the flattened, import-free output.
+6. `scene_get_state` to confirm clean diagnostics and hashes.
+7. `scene_set_camera` + `scene_screenshot` for authored evidence.
+8. Verify behavior separately with `browser_screenshot` and console logs.
+
+**XR interaction**
+
+1. `xr_get_session_status`, then `xr_accept_session` if offered.
+2. `xr_set_input_mode` (`controller` or `hand`).
+3. `xr_set_connected` for each emulated input device.
+4. `scene_get_runtime_hierarchy` and `scene_get_object_transform`.
+5. `xr_look_at` and `xr_select` (or `xr_set_select_value` for a held input).
+6. `browser_screenshot` + console logs.
+
+**ECS debugging**
+
+1. `ecs_list_systems` and `ecs_list_components`.
+2. `ecs_find_entities`, then `ecs_query_entity`.
+3. `ecs_pause`, labeled `ecs_snapshot`, `ecs_step` or `ecs_set_component`.
+4. Second snapshot + `ecs_diff`.
+5. `ecs_resume` even when no defect is found.
+
+Editor screenshots are not proof of runtime behavior. Pose and interaction
+claims require an active XR session; check `xr_get_session_status` first.
+
+### Version note
+
+The installed OpenCode CLI is the V1 line, so `opencode.json` uses the
+V1-compatible `mcp.<name>` + `permission` shape. OpenCode V2 accepts this shape
+as compatibility; a native V2 install can migrate it to `mcp.servers` and the
+`permissions` array without changing the server commands.
+
+Official references:
+[AI overview](https://developers.meta.com/vr/documentation/iwsdk/ai/getting-started/),
+[modes](https://developers.meta.com/vr/documentation/iwsdk/ai/modes/),
+[MCP tools](https://developers.meta.com/vr/documentation/iwsdk/ai/mcp-tools/),
+[workflows](https://developers.meta.com/vr/documentation/iwsdk/ai/workflows/).
 
 ## Version notes
 

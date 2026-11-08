@@ -11,6 +11,8 @@
   "type": "module",
   "scripts": {
     "dev": "iwsdk dev restart --open --foreground",
+    "dev:collaborate": "iwsdk dev restart --ai-mode collaborate --foreground",
+    "dev:agent": "iwsdk dev restart --ai-mode agent --foreground",
     "dev:runtime": "vite",
     "dev:down": "iwsdk dev down",
     "dev:status": "iwsdk dev status",
