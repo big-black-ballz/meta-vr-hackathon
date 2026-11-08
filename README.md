@@ -321,6 +321,10 @@ V1-compatible `mcp.<name>` + `permission` shape. OpenCode V2 accepts this shape
 as compatibility; a native V2 install can migrate it to `mcp.servers` and the
 `permissions` array without changing the server commands.
 
+The committed config uses portable relative command paths. Running
+`npx iwsdk adapter sync --tools opencode` may rewrite it with machine-specific
+absolute paths, so re-check the file after an adapter sync or IWSDK upgrade.
+
 Official references:
 [AI overview](https://developers.meta.com/vr/documentation/iwsdk/ai/getting-started/),
 [modes](https://developers.meta.com/vr/documentation/iwsdk/ai/modes/),
