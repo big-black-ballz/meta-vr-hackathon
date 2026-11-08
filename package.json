@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lordkazuma202223-ops/meta-vr-hackathon.git"
+    "url": "git+https://github.com/big-black-ballz/meta-vr-hackathon.git"
   },
   "type": "module",
   "scripts": {
