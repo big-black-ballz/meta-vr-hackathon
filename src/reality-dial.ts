@@ -11,10 +11,10 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   CircleGeometry,
   Color,
   createSystem,
-  CylinderGeometry,
   DoubleSide,
   Entity,
   Group,
@@ -24,9 +24,10 @@ import {
   Object3D,
   PlaneGeometry,
   Points,
-  PointsMaterial,
+  Quaternion,
   ShaderMaterial,
   SphereGeometry,
+  SRGBColorSpace,
   TorusGeometry,
   Vector3,
   VisibilityState,
@@ -139,41 +140,152 @@ varying vec3 vWorld;
 
 void main() {
   vec2 p = vWorld.xz;
-  vec2 g = abs(fract(p * 1.4) - 0.5);
-  float line = 1.0 - smoothstep(0.45, 0.5, max(g.x, g.y));
+  vec2 g = abs(fract(p * 1.0) - 0.5);
+  float major = 1.0 - smoothstep(0.46, 0.5, max(g.x, g.y));
+  vec2 gm = abs(fract(p * 5.0) - 0.5);
+  float minor = 1.0 - smoothstep(0.47, 0.5, max(gm.x, gm.y));
+
+  float dist = length(p);
+  float fog = 1.0 - smoothstep(3.0, uFogFar, dist);
   float gate = smoothstep(0.15, 0.9, uValue);
-  float dist = length(vWorld.xz);
-  float fog = 1.0 - smoothstep(4.0, uFogFar, dist);
-  float pulse = 0.35 + 0.15 * sin(uTime * 0.8 + p.x * 0.2 + p.y * 0.2);
-  float alpha = line * gate * fog * pulse;
-  vec3 color = mix(vec3(0.16, 0.52, 0.82), vec3(0.80, 0.95, 1.0), fog);
+
+  vec3 nearColor = vec3(0.35, 0.88, 1.0);
+  vec3 farColor = vec3(0.16, 0.52, 0.72);
+  vec3 color = mix(farColor, nearColor, fog);
+
+  float alpha = (major * 0.45 + minor * 0.10) * gate * fog;
+  alpha *= 0.85 + 0.15 * sin(uTime * 0.5 + p.x * 0.12 + p.y * 0.1);
   gl_FragColor = vec4(color, alpha);
 }
 `;
 
-const SKY_VERTEX = `
-varying vec3 vWorld;
+const DOME_VERTEX = `
+varying vec3 vDirection;
 void main() {
-  vec4 world = modelMatrix * vec4(position, 1.0);
-  vWorld = world.xyz;
-  gl_Position = projectionMatrix * viewMatrix * world;
+  vDirection = normalize(position);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 
-const SKY_FRAGMENT = `
+const DOME_FRAGMENT = `
 uniform float uValue;
 uniform float uTime;
-varying vec3 vWorld;
+varying vec3 vDirection;
+
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(
+      mix(hash(i + vec3(0.0, 0.0, 0.0)), hash(i + vec3(1.0, 0.0, 0.0)), f.x),
+      mix(hash(i + vec3(0.0, 1.0, 0.0)), hash(i + vec3(1.0, 1.0, 0.0)), f.x),
+      f.y
+    ),
+    mix(
+      mix(hash(i + vec3(0.0, 0.0, 1.0)), hash(i + vec3(1.0, 0.0, 1.0)), f.x),
+      mix(hash(i + vec3(0.0, 1.0, 1.0)), hash(i + vec3(1.0, 1.0, 1.0)), f.x),
+      f.y
+    ),
+    f.z
+  );
+}
+
+float fbm(vec3 p) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  for (int i = 0; i < 3; i++) {
+    value += amplitude * noise(p);
+    p *= 2.03;
+    amplitude *= 0.5;
+  }
+  return value;
+}
 
 void main() {
-  float h = clamp(vWorld.y / 16.0, 0.0, 1.0);
-  vec3 horizon = vec3(0.05, 0.13, 0.23);
-  vec3 zenith = vec3(0.01, 0.03, 0.09);
-  vec3 color = mix(horizon, zenith, h);
-  float band = 0.5 + 0.5 * sin(vWorld.x * 0.08 + uTime * 0.08 + vWorld.z * 0.06);
-  color += vec3(0.03, 0.07, 0.11) * band * (1.0 - h) * 0.6;
+  vec3 d = normalize(vDirection);
+  float h = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
+
+  vec3 horizon = vec3(0.28, 0.78, 0.92);
+  vec3 mid = vec3(0.07, 0.04, 0.22);
+  vec3 zenith = vec3(0.02, 0.01, 0.09);
+
+  vec3 color = mix(horizon, mid, smoothstep(0.0, 0.30, h));
+  color = mix(color, zenith, smoothstep(0.34, 0.92, h));
+
+  float horizonGlow = exp(-abs(d.y) * 9.0);
+  color += horizon * horizonGlow * 0.35;
+
+  float n = fbm(d * 3.0 + vec3(0.0, uTime * 0.012, 0.0));
+  float n2 = fbm(d * 6.0 - vec3(uTime * 0.009, 0.0, 0.0));
+  float nebula = smoothstep(0.50, 0.86, n) * smoothstep(0.32, 0.82, n2);
+  vec3 nebulaColor = mix(vec3(0.18, 0.05, 0.40), vec3(0.04, 0.30, 0.46), n2);
+  color += nebulaColor * nebula * 0.90 * (1.0 - smoothstep(0.58, 1.0, h));
+
   float alpha = smoothstep(0.25, 1.0, uValue);
   gl_FragColor = vec4(color, alpha);
+}
+`;
+
+const STAR_VERTEX = `
+uniform float uTime;
+attribute float aSize;
+attribute float aPhase;
+varying float vTwinkle;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aSize * (60.0 / max(1.0, -mv.z));
+  gl_Position = projectionMatrix * mv;
+  vTwinkle = 0.65 + 0.35 * sin(uTime * 1.4 + aPhase);
+}
+`;
+
+const STAR_FRAGMENT = `
+uniform float uStars;
+varying float vTwinkle;
+void main() {
+  vec2 c = gl_PointCoord - vec2(0.5);
+  float d = length(c);
+  float core = smoothstep(0.5, 0.04, d);
+  float glow = smoothstep(0.5, 0.0, d);
+  vec3 color = mix(vec3(0.62, 0.82, 1.0), vec3(1.0), core);
+  gl_FragColor = vec4(color, glow * uStars * vTwinkle);
+}
+`;
+
+const PARTICLE_VERTEX = `
+uniform float uTime;
+attribute float aSize;
+attribute float aPhase;
+attribute vec3 aColor;
+varying vec3 vColor;
+varying float vTwinkle;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aSize * (180.0 / max(1.0, -mv.z));
+  gl_Position = projectionMatrix * mv;
+  vColor = aColor;
+  vTwinkle = 0.7 + 0.3 * sin(uTime * 1.1 + aPhase);
+}
+`;
+
+const PARTICLE_FRAGMENT = `
+uniform float uOpacity;
+varying vec3 vColor;
+varying float vTwinkle;
+void main() {
+  vec2 c = gl_PointCoord - vec2(0.5);
+  float d = length(c);
+  float glow = smoothstep(0.5, 0.0, d);
+  float core = smoothstep(0.22, 0.0, d);
+  vec3 color = vColor * (0.8 + 0.8 * core);
+  gl_FragColor = vec4(color, glow * uOpacity * vTwinkle);
 }
 `;
 
@@ -264,11 +376,14 @@ interface MembranePlane {
   role: 'front' | 'back' | 'left' | 'right';
 }
 
-interface CloudShape {
+interface CloudSprite {
   mesh: Mesh;
+  material: MeshBasicMaterial;
   base: Vector3;
   phase: number;
   speed: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -289,6 +404,7 @@ export class RealityDialSystem extends createSystem({
   private handPinchStartX = 0;
   private handPinchStartValue = 0;
   private handPosition = new Vector3();
+  private tmpQuat = new Quaternion();
 
   private planeGeometry!: PlaneGeometry;
   private membraneMaterial!: ShaderMaterial;
@@ -297,10 +413,12 @@ export class RealityDialSystem extends createSystem({
   private cloudGroup!: Group;
   private gridMaterial!: ShaderMaterial;
   private skyMaterial!: ShaderMaterial;
-  private cloudShapes: CloudShape[] = [];
+  private starMaterial!: ShaderMaterial;
+  private cloudSprites: CloudSprite[] = [];
+  private cloudTexture!: CanvasTexture;
 
   private particleGeometry!: BufferGeometry;
-  private particleMaterial!: PointsMaterial;
+  private particleMaterial!: ShaderMaterial;
   private particlePositions!: Float32Array;
   private particleVelocities!: Float32Array;
 
@@ -411,6 +529,7 @@ export class RealityDialSystem extends createSystem({
       }
       mesh.position.y = ROOM_H / 2;
       mesh.visible = false;
+      mesh.renderOrder = 2;
       this.membranePlanes.push({ mesh, role });
     }
   }
@@ -424,8 +543,8 @@ export class RealityDialSystem extends createSystem({
     }
     this.cloudGroup = group;
 
-    const sky = new Mesh(
-      new CylinderGeometry(24, 24, 60, 48, 1, true),
+    const dome = new Mesh(
+      new SphereGeometry(30, 48, 24),
       new ShaderMaterial({
         transparent: true,
         depthWrite: false,
@@ -434,14 +553,55 @@ export class RealityDialSystem extends createSystem({
           uValue: { value: 0 },
           uTime: { value: 0 },
         },
-        vertexShader: SKY_VERTEX,
-        fragmentShader: SKY_FRAGMENT,
+        vertexShader: DOME_VERTEX,
+        fragmentShader: DOME_FRAGMENT,
       }),
     );
-    sky.position.y = 30;
-    sky.name = 'cloud-sky';
-    this.skyMaterial = sky.material as ShaderMaterial;
-    group.add(sky);
+    dome.name = 'cloud-dome';
+    dome.renderOrder = -10;
+    this.skyMaterial = dome.material as ShaderMaterial;
+    group.add(dome);
+
+    const starCount = 900;
+    const starPositions = new Float32Array(starCount * 3);
+    const starSizes = new Float32Array(starCount);
+    const starPhases = new Float32Array(starCount);
+    let starSeed = 20271;
+    const starRand = (): number => {
+      starSeed = (starSeed * 1664525 + 1013904223) >>> 0;
+      return starSeed / 4294967296;
+    };
+    for (let i = 0; i < starCount; i++) {
+      const u = starRand() * 2 - 1;
+      const theta = starRand() * Math.PI * 2;
+      const s = Math.sqrt(Math.max(0, 1 - u * u));
+      const radius = 27 + starRand() * 2.2;
+      starPositions[i * 3] = s * Math.cos(theta) * radius;
+      starPositions[i * 3 + 1] = u * radius * 0.85 + 3.0;
+      starPositions[i * 3 + 2] = s * Math.sin(theta) * radius;
+      starSizes[i] = 0.8 + starRand() * 1.7;
+      starPhases[i] = starRand() * Math.PI * 2;
+    }
+    const starGeometry = new BufferGeometry();
+    starGeometry.setAttribute('position', new BufferAttribute(starPositions, 3));
+    starGeometry.setAttribute('aSize', new BufferAttribute(starSizes, 1));
+    starGeometry.setAttribute('aPhase', new BufferAttribute(starPhases, 1));
+    this.starMaterial = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      uniforms: {
+        uStars: { value: 0 },
+        uTime: { value: 0 },
+      },
+      vertexShader: STAR_VERTEX,
+      fragmentShader: STAR_FRAGMENT,
+    });
+    const stars = new Points(starGeometry, this.starMaterial);
+    stars.name = 'cloud-stars';
+    stars.frustumCulled = false;
+    stars.renderOrder = -9;
+    group.add(stars);
 
     const grid = new Mesh(
       new PlaneGeometry(26, 26),
@@ -461,86 +621,182 @@ export class RealityDialSystem extends createSystem({
     grid.rotation.x = -Math.PI / 2;
     grid.position.y = 0.004;
     grid.name = 'cloud-grid';
+    grid.renderOrder = -8;
     this.gridMaterial = grid.material as ShaderMaterial;
     group.add(grid);
 
-    const shapeGeometry = new SphereGeometry(0.55, 7, 5);
-    for (let i = 0; i < 12; i++) {
-      const angle = i * 2.399963;
-      const radius = 3.4 + (i % 4) * 1.4;
-      const color = i % 3 === 0 ? 0x9fe8ff : i % 3 === 1 ? 0x4a8fc7 : 0xbfeeff;
+    this.cloudTexture = this.createCloudTexture();
+    let spriteSeed = 7717;
+    const spriteRand = (): number => {
+      spriteSeed = (spriteSeed * 1664525 + 1013904223) >>> 0;
+      return spriteSeed / 4294967296;
+    };
+    for (let i = 0; i < 24; i++) {
+      const angle = i * 2.399963 + spriteRand() * 0.5;
+      const radius = 2.8 + (i % 7) * 1.5 + spriteRand() * 0.8;
+      const base = new Vector3(
+        Math.cos(angle) * radius,
+        0.8 + spriteRand() * 3.8,
+        Math.sin(angle) * radius,
+      );
+      const width = 1.4 + spriteRand() * 3.0;
+      const height = width * (0.5 + spriteRand() * 0.35);
+      const color =
+        i % 3 === 0 ? 0x9fe8ff : i % 3 === 1 ? 0x6fb8ff : 0xc9b6ff;
       const material = new MeshBasicMaterial({
+        map: this.cloudTexture,
         color: new Color(color),
         transparent: true,
         opacity: 0,
         depthWrite: false,
+        side: DoubleSide,
       });
-      const mesh = new Mesh(shapeGeometry, material);
-      const base = new Vector3(
-        Math.cos(angle) * radius,
-        0.8 + ((i * 0.37) % 3.0),
-        Math.sin(angle) * radius,
-      );
+      const mesh = new Mesh(this.planeGeometry, material);
+      mesh.name = `cloud-sprite-${i}`;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = -7;
       mesh.position.copy(base);
-      const scale = 0.5 + ((i * 0.23) % 1.0);
-      mesh.scale.setScalar(scale);
-      mesh.name = `cloud-shape-${i}`;
+      mesh.scale.set(width, height, 1);
       group.add(mesh);
-      this.cloudShapes.push({
+      this.cloudSprites.push({
         mesh,
+        material,
         base,
-        phase: i * 0.7,
-        speed: 0.15 + (i % 5) * 0.04,
+        phase: spriteRand() * Math.PI * 2,
+        speed: 0.08 + spriteRand() * 0.12,
+        width,
+        height,
       });
     }
 
-    const particleCount = 220;
+    const particleCount = 320;
     this.particlePositions = new Float32Array(particleCount * 3);
     this.particleVelocities = new Float32Array(particleCount * 3);
+    const particleSizes = new Float32Array(particleCount);
+    const particlePhases = new Float32Array(particleCount);
+    const particleColors = new Float32Array(particleCount * 3);
+    let particleSeed = 991;
+    const particleRand = (): number => {
+      particleSeed = (particleSeed * 1664525 + 1013904223) >>> 0;
+      return particleSeed / 4294967296;
+    };
+    const palette = [0x9fe8ff, 0xffffff, 0xbfa8ff];
     for (let i = 0; i < particleCount; i++) {
-      const side = i % 4;
-      const t = ((i * 0.61803398875) % 1) * 2 - 1;
-      const y = 0.2 + ((i * 0.37) % 1) * 2.2;
       let x = 0;
+      let y = 0;
       let z = 0;
-      if (side === 0) {
-        x = t * ROOM_HX;
-        z = -ROOM_HZ;
-      } else if (side === 1) {
-        x = t * ROOM_HX;
-        z = ROOM_HZ;
-      } else if (side === 2) {
-        x = -ROOM_HX;
-        z = t * ROOM_HZ;
+      let vx = 0;
+      let vy = 0;
+      let vz = 0;
+      if (i < 120) {
+        const side = i % 4;
+        const t = particleRand() * 2 - 1;
+        y = 0.2 + particleRand() * 2.2;
+        if (side === 0) {
+          x = t * ROOM_HX;
+          z = -ROOM_HZ;
+        } else if (side === 1) {
+          x = t * ROOM_HX;
+          z = ROOM_HZ;
+        } else if (side === 2) {
+          x = -ROOM_HX;
+          z = t * ROOM_HZ;
+        } else {
+          x = ROOM_HX;
+          z = t * ROOM_HZ;
+        }
+        const len = Math.hypot(x, z) || 1;
+        vx = (x / len) * (0.05 + particleRand() * 0.05);
+        vy = 0.02 + particleRand() * 0.04;
+        vz = (z / len) * (0.05 + particleRand() * 0.05);
       } else {
-        x = ROOM_HX;
-        z = t * ROOM_HZ;
+        const angle = particleRand() * Math.PI * 2;
+        const radius = 0.8 + particleRand() * 6.5;
+        x = Math.cos(angle) * radius;
+        y = 0.5 + particleRand() * 3.4;
+        z = Math.sin(angle) * radius;
+        vx = (particleRand() - 0.5) * 0.02;
+        vy = 0.005 + particleRand() * 0.015;
+        vz = (particleRand() - 0.5) * 0.02;
       }
       this.particlePositions[i * 3] = x;
       this.particlePositions[i * 3 + 1] = y;
       this.particlePositions[i * 3 + 2] = z;
-      const len = Math.hypot(x, z) || 1;
-      this.particleVelocities[i * 3] = (x / len) * (0.08 + (i % 5) * 0.01);
-      this.particleVelocities[i * 3 + 1] = 0.03 + (i % 3) * 0.015;
-      this.particleVelocities[i * 3 + 2] = (z / len) * (0.08 + (i % 5) * 0.01);
+      this.particleVelocities[i * 3] = vx;
+      this.particleVelocities[i * 3 + 1] = vy;
+      this.particleVelocities[i * 3 + 2] = vz;
+      particleSizes[i] = 0.035 + particleRand() * 0.06;
+      particlePhases[i] = particleRand() * Math.PI * 2;
+      const color = new Color(palette[i % palette.length]);
+      particleColors[i * 3] = color.r;
+      particleColors[i * 3 + 1] = color.g;
+      particleColors[i * 3 + 2] = color.b;
     }
     this.particleGeometry = new BufferGeometry();
     this.particleGeometry.setAttribute(
       'position',
       new BufferAttribute(this.particlePositions, 3),
     );
-    this.particleMaterial = new PointsMaterial({
-      color: new Color(0x9fe8ff),
-      size: 0.05,
-      sizeAttenuation: true,
+    this.particleGeometry.setAttribute(
+      'aSize',
+      new BufferAttribute(particleSizes, 1),
+    );
+    this.particleGeometry.setAttribute(
+      'aPhase',
+      new BufferAttribute(particlePhases, 1),
+    );
+    this.particleGeometry.setAttribute(
+      'aColor',
+      new BufferAttribute(particleColors, 3),
+    );
+    this.particleMaterial = new ShaderMaterial({
       transparent: true,
-      opacity: 0,
       depthWrite: false,
       blending: AdditiveBlending,
+      uniforms: {
+        uOpacity: { value: 0 },
+        uTime: { value: 0 },
+      },
+      vertexShader: PARTICLE_VERTEX,
+      fragmentShader: PARTICLE_FRAGMENT,
     });
     const particles = new Points(this.particleGeometry, this.particleMaterial);
     particles.name = 'cloud-particles';
+    particles.renderOrder = -6;
     this.cloudGroup.add(particles);
+  }
+
+  private createCloudTexture(): CanvasTexture {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (ctx == null) {
+      return new CanvasTexture(canvas);
+    }
+    ctx.clearRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'lighter';
+    let seed = 4242;
+    const rand = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let i = 0; i < 26; i++) {
+      const x = size * (0.2 + rand() * 0.6);
+      const y = size * (0.25 + rand() * 0.5);
+      const r = size * (0.08 + rand() * 0.22);
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+      gradient.addColorStop(0.45, 'rgba(190, 238, 255, 0.18)');
+      gradient.addColorStop(1, 'rgba(120, 200, 255, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
   }
 
   update(delta: number): void {
@@ -657,31 +913,45 @@ export class RealityDialSystem extends createSystem({
     if (this.gridMaterial != null) {
       this.gridMaterial.uniforms['uValue'].value = v;
       this.gridMaterial.uniforms['uTime'].value = this.elapsed;
-      this.gridMaterial.uniforms['uFogFar'].value = 6 + 16 * v;
+      this.gridMaterial.uniforms['uFogFar'].value = 5 + 16 * v;
     }
     if (this.skyMaterial != null) {
       this.skyMaterial.uniforms['uValue'].value = v;
       this.skyMaterial.uniforms['uTime'].value = this.elapsed;
     }
+    if (this.starMaterial != null) {
+      this.starMaterial.uniforms['uStars'].value = smoothstep(0.3, 0.92, v);
+      this.starMaterial.uniforms['uTime'].value = this.elapsed;
+    }
 
-    const shapeGate = smoothstep(0.25, 0.9, v);
-    for (const shape of this.cloudShapes) {
-      const material = shape.mesh.material as MeshBasicMaterial;
-      const dist = shape.base.length();
+    const spriteGate = smoothstep(0.22, 0.9, v);
+    this.world.camera.updateWorldMatrix(true, false);
+    this.world.camera.getWorldQuaternion(this.tmpQuat);
+    for (const cloud of this.cloudSprites) {
+      const dist = cloud.base.length();
       const fog = 1 - smoothstep(7, 18 + 8 * v, dist);
-      material.opacity = shapeGate * fog * 0.75;
-      shape.mesh.position.set(
-        shape.base.x + Math.sin(this.elapsed * shape.speed + shape.phase) * 0.25,
-        shape.base.y +
-          Math.sin(this.elapsed * shape.speed * 0.7 + shape.phase) * 0.12,
-        shape.base.z +
-          Math.cos(this.elapsed * shape.speed * 0.8 + shape.phase) * 0.25,
+      cloud.material.opacity = spriteGate * fog * 0.38;
+      cloud.mesh.position.set(
+        cloud.base.x +
+          Math.sin(this.elapsed * cloud.speed + cloud.phase) * 0.35,
+        cloud.base.y +
+          Math.sin(this.elapsed * cloud.speed * 0.7 + cloud.phase) * 0.18,
+        cloud.base.z +
+          Math.cos(this.elapsed * cloud.speed * 0.8 + cloud.phase) * 0.35,
+      );
+      cloud.mesh.quaternion.copy(this.tmpQuat);
+      const breathe = 0.94 + 0.06 * Math.sin(this.elapsed * 0.3 + cloud.phase);
+      cloud.mesh.scale.set(
+        cloud.width * breathe,
+        cloud.height * breathe,
+        1,
       );
     }
 
     const particleGate = smoothstep(0.05, 0.55, v);
     if (this.particleMaterial != null) {
-      this.particleMaterial.opacity = particleGate * 0.65;
+      this.particleMaterial.uniforms['uOpacity'].value = particleGate * 0.85;
+      this.particleMaterial.uniforms['uTime'].value = this.elapsed;
       if (v > 0.001) {
         for (let i = 0; i < this.particlePositions.length; i += 3) {
           this.particlePositions[i] += this.particleVelocities[i] * delta;

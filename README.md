@@ -172,9 +172,23 @@ in place; no separate config file needs editing.
 The app uses a virtual room shell roughly 4 m x 4.4 m x 2.6 m around the player.
 At **Real (0)** the shell and Cloud are invisible, so passthrough shows your real
 room. Turning the dial to **Blend (0.5)** sweeps a world-space, noise-based
-dissolve membrane inward from the shell walls while the Cloud floor grid, shapes,
-particles and fog emerge behind it. At **Cloud (1)** the shell is gone and the
-Cloud is fully established at the same floor level and horizon.
+dissolve membrane inward from the shell walls while the Cloud emerges behind it.
+At **Cloud (1)** the shell is gone and the Cloud is fully established at the same
+floor level and horizon.
+
+Cloud environment:
+
+- **Gradient dome** — a large inverted sphere: dark violet at the top, deep blue
+  through the middle, soft cyan at the horizon.
+- **Nebula** — a slow-moving fBm noise layer on the dome in violet/cyan.
+- **Stars** — a point layer with varied sizes and gentle twinkle, faded in by the
+  dial.
+- **Fog** — horizon-matched cyan fog; the grid and cloud puffs fade into it.
+- **Cloud puffs** — soft canvas-generated sprites that drift slowly for volume.
+- **Near particles** — custom soft point particles distributed around the player
+  and released from the dissolving walls.
+- **Grid floor** — major/minor lines at the room footprint, fading into fog with
+  distance.
 
 Controls:
 
