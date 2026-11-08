@@ -45,16 +45,6 @@ export default defineAssets({
     type: AssetType.UIKitML,
     name: 'Welcome Panel',
   },
-  'hud-panel': {
-    url: publicAssetUrl('ui/hud.uikitml'),
-    type: AssetType.UIKitML,
-    name: 'HUD Panel',
-  },
-  'hand-panel': {
-    url: publicAssetUrl('ui/hand.uikitml'),
-    type: AssetType.UIKitML,
-    name: 'Hand Panel',
-  },
   'webxr-banner': {
     url: publicAssetUrl('gltf/webxr-banner/banner.gltf'),
     type: AssetType.GLTF,

@@ -160,14 +160,30 @@ in place; no separate config file needs editing.
 | `grabbing` | Picking up and moving virtual objects (already on) |
 | `physics` | Gravity, collisions, and physically driven grabbing |
 | `locomotion` | Teleport/slide movement in VR-style scenes. Add a `LocomotionEnvironment` component to walkable geometry or the player will fall through the world |
-| `sceneUnderstanding` | Room/plane data from the headset. May prompt the user for space setup |
-| `environmentRaycast` | Hit-testing real-world surfaces to place content in the room |
+| `sceneUnderstanding` | (on) Detects real walls; the wall ahead gets a scan highlight and a glowing pinch marker |
+| `environmentRaycast` | (on) Headset-gaze hit test that sticks the marker to the wall you look at |
 | `spatialUI` | Horizon-styled UIKit panels (already on) |
 
 > **MR tip:** passthrough itself does not require room setup. Plane/room data and
 > environment raycasts do — expect a space-setup prompt the first time you enable
 > `sceneUnderstanding` or `environmentRaycast`, and handle the "no room data"
 > case gracefully.
+
+## Pinch dive (no UI boxes)
+
+Look at a wall and a glowing marker appears where your gaze lands. **Pinch**
+with your hand (or pull a controller trigger, or press **Space** on desktop) and
+a gooey deep-space portal spreads across the wall, then the whole room dissolves
+into deep space. Pinch / trigger / Space again to return.
+
+- State is mirrored to ECS for inspection: `DiveControl` (`Room`, `Dissolving`,
+  `DeepSpace`, `Returning` + `progress`) and `WallPortal` (`Scanning`, `Goo`,
+  `Open` + `goo`, `wallPoint`, `wallNormal`).
+- On a real headset, do **Space Setup** first (Quest Settings, or accept the
+  prompt in-headset) so the app can see your walls. Put the controllers down and
+  use your hands — pinch is the trigger.
+- Without real room data (desktop browser, IWER), a demo wall stands in so the
+  full loop still runs.
 
 ## Deploying for judges or teammates
 

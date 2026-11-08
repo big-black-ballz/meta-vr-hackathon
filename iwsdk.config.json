@@ -13,7 +13,8 @@
       "mode": "ar",
       "offer": "always",
       "features": {
-        "handTracking": true
+        "handTracking": true,
+        "hitTest": true
       }
     },
     "input": {
@@ -34,8 +35,8 @@
       "locomotion": false,
       "grabbing": true,
       "physics": false,
-      "sceneUnderstanding": false,
-      "environmentRaycast": false,
+      "sceneUnderstanding": true,
+      "environmentRaycast": true,
       "spatialUI": {
         "kit": "horizon"
       }

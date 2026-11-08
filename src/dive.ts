@@ -10,30 +10,38 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
+  CircleGeometry,
   Color,
   createSystem,
   DoubleSide,
   Entity,
-  Euler,
+  EnvironmentRaycastTarget,
   Mesh,
   MeshBasicMaterial,
   Object3D,
+  PlaneGeometry,
   Points,
   PointsMaterial,
+  Pressed,
   Quaternion,
+  RaycastSpace,
+  RayInteractable,
   RingGeometry,
   ShaderMaterial,
   SphereGeometry,
-  UIKitMLAsset,
   Vector3,
   VisibilityState,
+  XRPlane,
 } from '@iwsdk/core';
 import { DiveControl } from './dive-component.js';
+import { WallPortal } from './wall-portal-component.js';
 
 type DivePhase = 'Room' | 'Dissolving' | 'DeepSpace' | 'Returning';
+type PortalPhase = 'Idle' | 'Scanning' | 'Goo' | 'Open';
 
 const DISSOLVE_SECONDS = 3;
 const RETURN_SECONDS = 2;
+const GOO_SECONDS = 2.2;
 const RING_COUNT = 2;
 
 function clamp01(v: number): number {
@@ -77,105 +85,170 @@ void main() {
 }
 `;
 
+const GOO_VERTEX = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const GOO_FRAGMENT = `
+uniform float uGoo;
+uniform float uTime;
+varying vec2 vUv;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+void main() {
+  vec2 c = vUv - vec2(0.5);
+  float r = length(c) * 2.0;
+  float a = atan(c.y, c.x);
+  float wobble = sin(a * 5.0 + uTime * 2.2) * 0.5
+    + sin(a * 9.0 - uTime * 3.1) * 0.3
+    + sin(a * 3.0 + uTime * 1.4) * 0.2;
+  float edge = uGoo * (1.0 + 0.16 * wobble);
+  float alpha = 1.0 - smoothstep(edge - 0.12, edge, r);
+  if (alpha < 0.004) {
+    discard;
+  }
+  float h = clamp(0.5 - c.y, 0.0, 1.0);
+  vec3 deep = mix(vec3(0.02, 0.01, 0.07), vec3(0.10, 0.03, 0.22), h);
+  vec2 g = floor(vUv * 90.0);
+  float star = step(0.978, hash(g)) * (0.5 + 0.5 * sin(uTime * 3.0 + hash(g + 7.0) * 6.28));
+  float rim = smoothstep(edge - 0.16, edge - 0.02, r) * (1.0 - smoothstep(edge - 0.02, edge, r));
+  vec3 col = deep + vec3(0.9, 0.95, 1.0) * star + vec3(0.25, 0.8, 1.0) * rim * 0.9;
+  gl_FragColor = vec4(col, alpha);
+}
+`;
+
 /**
- * Owns the room-to-deep-space transition: POV HUD + hand-panel wiring,
- * left-hand follow in XR, and the dissolve animation (shockwave rings,
- * crossfading nebula dome, fading starfield).
+ * Wall-scan pinch dive: finds the vertical real-world wall ahead, marks it
+ * with a pulsing orb, and on pinch (or trigger / mouse press) grows a gooey
+ * deep-space portal on the wall that hands off to the full-space transition.
  */
 export class DiveSystem extends createSystem({
   dive: { required: [DiveControl] },
+  portal: { required: [WallPortal] },
+  walls: { required: [XRPlane] },
+  pressed: { required: [Pressed] },
 }) {
   private phase: DivePhase = 'Room';
   private progress = 0;
+  private portalPhase: PortalPhase = 'Scanning';
+  private goo = 0;
 
-  private hud!: UIKitMLAsset;
-  private hand!: UIKitMLAsset;
   private diveEntity: Entity | undefined;
-  private wired = false;
+  private portalEntity: Entity | undefined;
 
-  private handObj: Object3D | undefined;
-  private handHomePosition = new Vector3();
-  private handHomeQuaternion = new Quaternion();
-  private followingHand = false;
+  private markerEntity: Entity | undefined;
+  private markerObj: Object3D | undefined;
+  private markerMat: MeshBasicMaterial | undefined;
+  private hitEntity: Entity | undefined;
+
+  private portalObj: Object3D | undefined;
+  private portalMat: ShaderMaterial | undefined;
+
+  private fallbackWallObj: Object3D | undefined;
+
+  private frontWall: Entity | undefined;
+  private frontWallOriginalMaterial: unknown;
+  private highlightMat: MeshBasicMaterial | undefined;
 
   private domeObj!: Object3D;
   private domeMat!: ShaderMaterial;
+  private domeEntity: Entity | undefined;
   private starsObj!: Object3D;
   private starsMat!: PointsMaterial;
   private ringObjs: Object3D[] = [];
   private ringMats: MeshBasicMaterial[] = [];
 
-  private tmpPos = new Vector3();
-  private tmpHead = new Vector3();
-  private tmpEuler = new Euler();
-
-  private onDive = () => this.requestDive();
-  private onReturn = () => this.requestReturn();
+  private wallPoint = new Vector3(0, 1.5, -2.5);
+  private wallNormal = new Vector3(0, 0, 1);
+  private tmpA = new Vector3();
+  private tmpB = new Vector3();
+  private tmpC = new Vector3();
+  private tmpForward = new Vector3();
+  private tmpQuat = new Quaternion();
+  private elapsed = 0;
 
   init(): void {
-    this.hud = this.world.requireSceneObject<UIKitMLAsset>('hud-panel');
-    this.hand = this.world.requireSceneObject<UIKitMLAsset>('hand-panel');
     this.diveEntity = this.queries.dive.entities.values().next().value;
+    this.portalEntity = this.queries.portal.entities.values().next().value;
 
-    const hudDive = this.hud.getElementById('btn-dive');
-    const hudReturn = this.hud.getElementById('btn-return');
-    const handDive = this.hand.getElementById('btn-dive-hand');
-    const handReturn = this.hand.getElementById('btn-return-hand');
-    hudDive?.addEventListener('click', this.onDive);
-    hudReturn?.addEventListener('click', this.onReturn);
-    handDive?.addEventListener('click', this.onDive);
-    handReturn?.addEventListener('click', this.onReturn);
-    this.cleanupFuncs.push(
-      () => hudDive?.removeEventListener('click', this.onDive),
-      () => hudReturn?.removeEventListener('click', this.onReturn),
-      () => handDive?.removeEventListener('click', this.onDive),
-      () => handReturn?.removeEventListener('click', this.onReturn),
-    );
+    const hitObj = new Object3D();
+    this.hitEntity = this.world.createTransformEntity(hitObj);
+    this.hitEntity.addComponent(EnvironmentRaycastTarget, {
+      space: RaycastSpace.Viewer,
+      maxDistance: 12,
+    });
 
-    const handEntity = this.world.requireSceneEntity('hand-panel');
-    this.handObj = handEntity.object3D ?? undefined;
-    if (this.handObj != null) {
-      this.handHomePosition.copy(this.handObj.position);
-      this.handHomeQuaternion.copy(this.handObj.quaternion);
+    const markerMat = new MeshBasicMaterial({
+      color: new Color(0x46e0ff),
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    this.markerMat = markerMat;
+    const marker = new Mesh(new SphereGeometry(0.055, 20, 14), markerMat);
+    const markerEntity = this.world.createTransformEntity(marker);
+    markerEntity.addComponent(RayInteractable);
+    if (markerEntity.object3D != null) {
+      this.markerEntity = markerEntity;
+      this.markerObj = markerEntity.object3D;
+      this.markerObj.name = 'wall-marker';
+      this.markerObj.position.copy(this.wallPoint);
     }
+
+    this.portalMat = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      uniforms: {
+        uGoo: { value: 0 },
+        uTime: { value: 0 },
+      },
+      vertexShader: GOO_VERTEX,
+      fragmentShader: GOO_FRAGMENT,
+    });
+    const portal = new Mesh(new CircleGeometry(1, 48), this.portalMat);
+    const portalEntity = this.world.createTransformEntity(portal);
+    if (portalEntity.object3D != null) {
+      this.portalObj = portalEntity.object3D;
+      this.portalObj.name = 'wall-portal';
+      this.portalObj.visible = false;
+    }
+
+    const fallbackMat = new MeshBasicMaterial({
+      color: new Color(0x5a6b8c),
+      transparent: true,
+      opacity: 0.35,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+    const fallback = new Mesh(new PlaneGeometry(4, 2.5), fallbackMat);
+    const fallbackEntity = this.world.createTransformEntity(fallback);
+    if (fallbackEntity.object3D != null) {
+      this.fallbackWallObj = fallbackEntity.object3D;
+      this.fallbackWallObj.name = 'fallback-wall';
+      this.fallbackWallObj.position.set(0, 1.4, -2.5);
+      this.fallbackWallObj.visible = false;
+    }
+
+    this.highlightMat = new MeshBasicMaterial({
+      color: new Color(0x46e0ff),
+      transparent: true,
+      opacity: 0.22,
+      side: DoubleSide,
+      depthWrite: false,
+    });
 
     this.buildDeepSpace();
-    this.tryWire();
+    this.queries.pressed.subscribe('qualify', (entity) => this.onPressed(entity));
+    this.setPortalPhase('Scanning');
     this.setPhase('Room');
-  }
-
-  /**
-   * UIKitML documents may not be parsed on the first frame, so element
-   * lookup can return null during init. Retry every frame until all four
-   * buttons resolve, then attach listeners exactly once.
-   */
-  private tryWire(): void {
-    if (this.wired) {
-      return;
-    }
-    const hudDive = this.hud.getElementById('btn-dive');
-    const hudReturn = this.hud.getElementById('btn-return');
-    const handDive = this.hand.getElementById('btn-dive-hand');
-    const handReturn = this.hand.getElementById('btn-return-hand');
-    if (
-      hudDive == null ||
-      hudReturn == null ||
-      handDive == null ||
-      handReturn == null
-    ) {
-      return;
-    }
-    hudDive.addEventListener('click', this.onDive);
-    hudReturn.addEventListener('click', this.onReturn);
-    handDive.addEventListener('click', this.onDive);
-    handReturn.addEventListener('click', this.onReturn);
-    this.cleanupFuncs.push(
-      () => hudDive.removeEventListener('click', this.onDive),
-      () => hudReturn.removeEventListener('click', this.onReturn),
-      () => handDive.removeEventListener('click', this.onDive),
-      () => handReturn.removeEventListener('click', this.onReturn),
-    );
-    this.wired = true;
   }
 
   private buildDeepSpace(): void {
@@ -196,6 +269,8 @@ export class DiveSystem extends createSystem({
     if (domeEntity.object3D == null) {
       return;
     }
+    domeEntity.addComponent(RayInteractable);
+    this.domeEntity = domeEntity;
     this.domeObj = domeEntity.object3D;
     this.domeObj.name = 'dive-dome';
     this.domeObj.position.set(0, 1.5, 0);
@@ -260,20 +335,35 @@ export class DiveSystem extends createSystem({
     }
   }
 
+  private onPressed(entity: Entity): void {
+    if (this.markerEntity != null && entity === this.markerEntity) {
+      if (this.phase === 'Room') {
+        this.requestDive();
+      }
+      return;
+    }
+    if (this.domeEntity != null && entity === this.domeEntity) {
+      if (this.phase === 'DeepSpace') {
+        this.requestReturn();
+      }
+    }
+  }
+
   private requestDive(): void {
-    if (this.phase === 'DeepSpace' || this.phase === 'Dissolving') {
+    if (this.phase !== 'Room') {
       return;
     }
     this.snapRingsToHead();
-    this.setPhase('Dissolving');
+    this.placePortal();
+    this.setPortalPhase('Goo');
   }
 
   private requestReturn(): void {
-    if (this.phase === 'Room' || this.phase === 'Returning') {
+    if (this.phase !== 'DeepSpace') {
       return;
     }
-    this.snapRingsToHead();
     this.setPhase('Returning');
+    this.setPortalPhase('Scanning');
   }
 
   private snapRingsToHead(): void {
@@ -282,49 +372,62 @@ export class DiveSystem extends createSystem({
       return;
     }
     head.updateWorldMatrix(true, false);
-    this.tmpHead.setFromMatrixPosition(head.matrixWorld);
+    this.tmpA.setFromMatrixPosition(head.matrixWorld);
     for (const ring of this.ringObjs) {
-      ring.position.set(this.tmpHead.x, 1.2, this.tmpHead.z);
+      ring.position.set(this.tmpA.x, 1.2, this.tmpA.z);
     }
+  }
+
+  private placePortal(): void {
+    if (this.portalObj == null) {
+      return;
+    }
+    this.portalObj.position
+      .copy(this.wallPoint)
+      .addScaledVector(this.wallNormal, 0.02);
+    this.tmpA.copy(this.wallPoint).add(this.wallNormal);
+    this.portalObj.lookAt(this.tmpA);
+    this.portalObj.visible = true;
   }
 
   private setPhase(phase: DivePhase): void {
     this.phase = phase;
     this.diveEntity?.setValue(DiveControl, 'phase', phase);
     this.diveEntity?.setValue(DiveControl, 'progress', this.progress);
+  }
 
-    const statusText =
-      phase === 'Room'
-        ? 'Your Room'
-        : phase === 'DeepSpace'
-          ? 'Deep Space'
-          : phase === 'Dissolving'
-            ? 'Dissolving...'
-            : 'Returning...';
-    const showDive = phase === 'Room' || phase === 'Returning';
-    this.hud.getElementById('hud-status')?.setProperties({ text: statusText });
-    this.hand.getElementById('hand-status')?.setProperties({ text: statusText });
-    this.hud
-      .getElementById('btn-dive')
-      ?.setProperties({ display: showDive ? 'flex' : 'none' });
-    this.hud
-      .getElementById('btn-return')
-      ?.setProperties({ display: showDive ? 'none' : 'flex' });
-    this.hand
-      .getElementById('btn-dive-hand')
-      ?.setProperties({ display: showDive ? 'flex' : 'none' });
-    this.hand
-      .getElementById('btn-return-hand')
-      ?.setProperties({ display: showDive ? 'none' : 'flex' });
+  private setPortalPhase(phase: PortalPhase): void {
+    this.portalPhase = phase;
+    this.portalEntity?.setValue(WallPortal, 'phase', phase);
+    this.portalEntity?.setValue(WallPortal, 'goo', this.goo);
   }
 
   update(delta: number): void {
     if (this.world.visibilityState.peek() === VisibilityState.VisibleBlurred) {
       return;
     }
+    this.elapsed += delta;
 
-    if (!this.wired) {
-      this.tryWire();
+    this.scanWalls();
+
+    const leftSelect = this.input.gamepads.left?.getSelectStart() === true;
+    const rightSelect = this.input.gamepads.right?.getSelectStart() === true;
+    const spaceDown = this.input.keyboard?.getKeyDown('Space') === true;
+    if (leftSelect || rightSelect || spaceDown) {
+      if (this.phase === 'Room') {
+        this.requestDive();
+      } else if (this.phase === 'DeepSpace') {
+        this.requestReturn();
+      }
+    }
+
+    if (this.portalPhase === 'Goo') {
+      this.goo = Math.min(1, this.goo + delta / GOO_SECONDS);
+      this.portalEntity?.setValue(WallPortal, 'goo', this.goo);
+      if (this.goo >= 1) {
+        this.setPortalPhase('Open');
+        this.setPhase('Dissolving');
+      }
     }
 
     if (this.phase === 'Dissolving') {
@@ -335,12 +438,137 @@ export class DiveSystem extends createSystem({
     } else if (this.phase === 'Returning') {
       this.progress = Math.max(0, this.progress - delta / RETURN_SECONDS);
       if (this.progress <= 0) {
+        this.goo = 0;
+        this.portalEntity?.setValue(WallPortal, 'goo', 0);
         this.setPhase('Room');
       }
     }
 
     this.driveVisuals(delta);
-    this.followHand();
+  }
+
+  private scanWalls(): void {
+    const head = this.player.head;
+    if (head == null) {
+      return;
+    }
+    head.updateWorldMatrix(true, false);
+    this.tmpB.setFromMatrixPosition(head.matrixWorld);
+    head.getWorldQuaternion(this.tmpQuat);
+    this.tmpForward.set(0, 0, -1).applyQuaternion(this.tmpQuat);
+
+    let best: Entity | undefined;
+    let bestDist = Infinity;
+    for (const entity of this.queries.walls.entities) {
+      const native = entity.getValue(XRPlane, '_plane') as
+        | { orientation?: string }
+        | undefined;
+      if (native?.orientation !== 'vertical') {
+        continue;
+      }
+      const obj = entity.object3D;
+      if (obj == null) {
+        continue;
+      }
+      obj.updateWorldMatrix(true, false);
+      this.tmpA.setFromMatrixPosition(obj.matrixWorld).sub(this.tmpB);
+      const dist = this.tmpA.length();
+      this.tmpA.normalize();
+      if (this.tmpA.dot(this.tmpForward) < 0.5) {
+        continue;
+      }
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = entity;
+      }
+    }
+
+    if (best !== this.frontWall) {
+      this.restoreWallMaterial();
+      this.frontWall = best;
+    }
+
+    const roomPhase = this.phase === 'Room';
+
+    if (this.frontWall != null) {
+      const obj = this.frontWall.object3D;
+      if (obj != null && obj instanceof Mesh) {
+        if (this.frontWallOriginalMaterial === undefined) {
+          this.frontWallOriginalMaterial = obj.material;
+        }
+        if (obj.material !== this.highlightMat && this.highlightMat != null) {
+          obj.material = this.highlightMat as unknown as typeof obj.material;
+        }
+      }
+      obj?.updateWorldMatrix(true, false);
+      if (obj != null) {
+        this.tmpA.setFromMatrixPosition(obj.matrixWorld);
+        obj.getWorldQuaternion(this.tmpQuat);
+        this.tmpC.set(0, 0, 1).applyQuaternion(this.tmpQuat);
+        this.tmpForward.copy(this.tmpB).sub(this.tmpA);
+        if (this.tmpC.dot(this.tmpForward) < 0) {
+          this.tmpC.negate();
+        }
+        this.wallPoint.copy(this.tmpA);
+        this.wallNormal.copy(this.tmpC);
+      }
+    }
+
+    const hitValid =
+      this.hitEntity?.getValue(EnvironmentRaycastTarget, 'xrHitTestResult') !=
+      null;
+    if (this.markerObj != null) {
+      const showMarker = roomPhase;
+      this.markerObj.visible = showMarker;
+      if (showMarker) {
+        if (hitValid && this.hitEntity?.object3D != null) {
+          this.markerObj.position.copy(this.hitEntity.object3D.position);
+          this.wallPoint.copy(this.markerObj.position);
+          if (this.hitEntity.object3D.quaternion != null) {
+            this.tmpC
+              .set(0, 0, 1)
+              .applyQuaternion(this.hitEntity.object3D.quaternion);
+            this.wallNormal.copy(this.tmpC);
+          }
+        } else if (this.frontWall == null) {
+          this.markerObj.position.set(0, 1.4, -2.5);
+          this.wallPoint.set(0, 1.4, -2.5);
+          this.wallNormal.set(0, 0, 1);
+        }
+        const s = 1 + 0.18 * Math.sin(this.elapsed * 4);
+        this.markerObj.scale.set(s, s, s);
+      }
+    }
+
+    if (this.portalEntity != null) {
+      const view = this.portalEntity.getVectorView(WallPortal, 'wallPoint');
+      view[0] = this.wallPoint.x;
+      view[1] = this.wallPoint.y;
+      view[2] = this.wallPoint.z;
+      const nview = this.portalEntity.getVectorView(WallPortal, 'wallNormal');
+      nview[0] = this.wallNormal.x;
+      nview[1] = this.wallNormal.y;
+      nview[2] = this.wallNormal.z;
+    }
+
+    if (this.fallbackWallObj != null) {
+      this.fallbackWallObj.visible = roomPhase && this.frontWall == null;
+    }
+  }
+
+  private restoreWallMaterial(): void {
+    if (
+      this.frontWall != null &&
+      this.frontWallOriginalMaterial !== undefined
+    ) {
+      const obj = this.frontWall.object3D;
+      if (obj != null && obj instanceof Mesh) {
+        obj.material =
+          this.frontWallOriginalMaterial as unknown as typeof obj.material;
+      }
+    }
+    this.frontWall = undefined;
+    this.frontWallOriginalMaterial = undefined;
   }
 
   private driveVisuals(delta: number): void {
@@ -367,38 +595,30 @@ export class DiveSystem extends createSystem({
       this.ringMats[i].opacity = transitioning ? (1 - rp) * 0.7 : 0;
       this.ringObjs[i].visible = transitioning && rp < 1;
     }
-  }
 
-  private followHand(): void {
-    if (this.handObj == null) {
-      return;
-    }
-    const immersive =
-      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-    if (!immersive) {
-      if (this.followingHand) {
-        this.handObj.position.copy(this.handHomePosition);
-        this.handObj.quaternion.copy(this.handHomeQuaternion);
-        this.followingHand = false;
+    if (this.portalObj != null && this.portalMat != null) {
+      const gooing = this.portalPhase === 'Goo';
+      const open = this.portalPhase === 'Open';
+      this.portalMat.uniforms['uGoo'].value = this.goo;
+      this.portalMat.uniforms['uTime'].value += delta;
+      if (gooing) {
+        const s = 0.25 + easeOutCubic(this.goo) * 1.5;
+        this.portalObj.scale.set(s, s, s);
+        this.portalObj.visible = true;
+      } else if (open && this.phase === 'Dissolving') {
+        const s = 1.75 + easeOutCubic(p) * 4;
+        this.portalObj.scale.set(s, s, s);
+        this.portalObj.visible = p < 0.85;
+      } else {
+        this.portalObj.visible = false;
       }
-      return;
     }
 
-    const grip = this.player.gripSpaces.left;
-    const head = this.player.head;
-    if (grip == null || head == null) {
-      return;
+    if (this.markerMat != null) {
+      this.markerMat.opacity = 0.75 + 0.2 * Math.sin(this.elapsed * 4);
     }
-    grip.updateWorldMatrix(true, false);
-    head.updateWorldMatrix(true, false);
-    this.tmpPos.setFromMatrixPosition(grip.matrixWorld);
-    this.tmpHead.setFromMatrixPosition(head.matrixWorld);
-    this.handObj.position.set(this.tmpPos.x, this.tmpPos.y + 0.12, this.tmpPos.z);
-    const yaw = Math.atan2(
-      this.tmpHead.x - this.handObj.position.x,
-      this.tmpHead.z - this.handObj.position.z,
-    );
-    this.handObj.quaternion.setFromEuler(this.tmpEuler.set(0, yaw, 0));
-    this.followingHand = true;
+    if (this.highlightMat != null && this.frontWall != null) {
+      this.highlightMat.opacity = 0.18 + 0.08 * Math.sin(this.elapsed * 2.5);
+    }
   }
 }
