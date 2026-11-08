@@ -32,15 +32,11 @@
         "DistanceGrabbable": {
           "movementMode": "MoveFromTarget"
         },
-        "DiveControl": {
-          "phase": "Room",
-          "progress": 0
-        },
-        "WallPortal": {
-          "phase": "Scanning",
-          "goo": 0,
-          "wallPoint": [0, 1.4, -2.5],
-          "wallNormal": [0, 0, 1]
+        "RealityDial": {
+          "value": 0,
+          "target": 0,
+          "scrubbing": false,
+          "zone": "Real"
         }
       }
     },

@@ -6,8 +6,7 @@
  */
 
 import { defineComponents } from '@iwsdk/core';
-import { DiveControl } from './dive-component.js';
+import { RealityDial } from './reality-dial-component.js';
 import { Robot } from './robot-component.js';
-import { WallPortal } from './wall-portal-component.js';
 
-export default defineComponents([DiveControl, Robot, WallPortal]);
+export default defineComponents([RealityDial, Robot]);

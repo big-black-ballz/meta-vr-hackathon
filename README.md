@@ -160,31 +160,32 @@ in place; no separate config file needs editing.
 | `grabbing` | Picking up and moving virtual objects (already on) |
 | `physics` | Gravity, collisions, and physically driven grabbing |
 | `locomotion` | Teleport/slide movement in VR-style scenes. Add a `LocomotionEnvironment` component to walkable geometry or the player will fall through the world |
-| `sceneUnderstanding` | (on) Maps your real walls as flat vertical planes and draws a subtle scan grid on each |
-| `environmentRaycast` | (off) Not needed for the wall scan; enable only for placing content on real surfaces |
+| `sceneUnderstanding` | (off) Not used by the Reality Dial; the transition uses a virtual room shell and does not depend on the Scene API |
+| `environmentRaycast` | (off) Not used by the Reality Dial; enable only for placing content on real surfaces |
 | `spatialUI` | Horizon-styled UIKit panels (already on) |
 
-> **MR tip:** passthrough itself does not require room setup. Plane/room data and
-> environment raycasts do — expect a space-setup prompt the first time you enable
-> `sceneUnderstanding` or `environmentRaycast`, and handle the "no room data"
-> case gracefully.
+> **MR tip:** passthrough itself does not require room setup. The Reality Dial
+> uses a virtual shell, so it works with or without a room map.
 
-## Pinch dive (no UI boxes)
+## Reality Dial (Real -> Cloud)
 
-When the app starts it maps your real walls as vertical planes and paints a
-subtle cyan **scan grid** on every wall it can see. **Pinch** with your hand (or
-pull a controller trigger, or press **Space** on desktop) and a gooey deep-space
-portal grows out of **every mapped wall at once**, then the whole room slowly
-dissolves into deep space. Pinch / trigger / Space again to return.
+The app uses a virtual room shell roughly 4 m x 4.4 m x 2.6 m around the player.
+At **Real (0)** the shell and Cloud are invisible, so passthrough shows your real
+room. Turning the dial to **Blend (0.5)** sweeps a world-space, noise-based
+dissolve membrane inward from the shell walls while the Cloud floor grid, shapes,
+particles and fog emerge behind it. At **Cloud (1)** the shell is gone and the
+Cloud is fully established at the same floor level and horizon.
 
-- State is mirrored to ECS for inspection: `DiveControl` (`Room`, `Dissolving`,
-  `DeepSpace`, `Returning` + `progress`) and `WallPortal` (`Scanning`, `Goo`,
-  `Open` + `goo`, `wallPoint`, `wallNormal`).
-- **Space Setup is required on the headset.** Quest Settings -> Boundary ->
-  Space Setup (or accept the in-headset prompt), then reload the page. Without a
-  room map the app falls back to four demo walls so the loop still works.
-- Detection quality depends on the room map: large flat walls bloom as one
-  portal each, and multiple detected segments bloom together.
+Controls:
+
+- **Left thumbstick left/right** (controllers) or **ArrowLeft / ArrowRight**
+  (desktop) scrubs the dial. Hand pinch + horizontal drag also scrubs in XR.
+- Releasing between values eases to the nearest stable state (0, 0.5, or 1)
+  over about 1 second. The dial needle shows the current value.
+- The state is mirrored to ECS as `RealityDial`:
+  `value`, `target`, `scrubbing`, `zone` (`Real`, `Blend`, `Cloud`).
+- Audio is generated at runtime: a rising whoosh follows the dissolve front and
+  a low swell fades in at the Cloud end, both gated by `value`.
 
 ## Deploying for judges or teammates
 
