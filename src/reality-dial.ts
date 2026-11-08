@@ -172,7 +172,7 @@ void main() {
   vec3 color = mix(horizon, zenith, h);
   float band = 0.5 + 0.5 * sin(vWorld.x * 0.08 + uTime * 0.08 + vWorld.z * 0.06);
   color += vec3(0.03, 0.07, 0.11) * band * (1.0 - h) * 0.6;
-  float alpha = smoothstep(0.3, 0.95, uValue) * 0.5;
+  float alpha = smoothstep(0.25, 1.0, uValue);
   gl_FragColor = vec4(color, alpha);
 }
 `;
@@ -425,7 +425,7 @@ export class RealityDialSystem extends createSystem({
     this.cloudGroup = group;
 
     const sky = new Mesh(
-      new CylinderGeometry(24, 24, 20, 48, 1, true),
+      new CylinderGeometry(24, 24, 60, 48, 1, true),
       new ShaderMaterial({
         transparent: true,
         depthWrite: false,
@@ -438,7 +438,7 @@ export class RealityDialSystem extends createSystem({
         fragmentShader: SKY_FRAGMENT,
       }),
     );
-    sky.position.y = 10;
+    sky.position.y = 30;
     sky.name = 'cloud-sky';
     this.skyMaterial = sky.material as ShaderMaterial;
     group.add(sky);
