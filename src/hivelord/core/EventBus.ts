@@ -1,15 +1,31 @@
+import type {
+  GestureData,
+  GestureHand,
+  GestureId,
+} from '../input/GestureMap.js';
 import { DEBUG } from './config.js';
 
 export interface HivelordEventMap {
   StateChanged: { from: string; to: string; reason?: string };
-  GestureStarted: { gesture: string };
-  GestureEnded: { gesture: string };
+  GestureStarted: GestureData & {
+    gesture: GestureId;
+    hand: GestureHand;
+    time: number;
+    confidence: number;
+  };
+  GestureEnded: GestureData & {
+    gesture: GestureId;
+    hand: GestureHand;
+    time: number;
+    confidence: number;
+    duration: number;
+  };
   AbilityUsed: { ability: string };
   EnemyStunned: { enemyId: number };
   ObjectiveCompleted: { objectiveId: string };
   ChapterCompleted: { chapterId: string };
-  TrackingLost: { hand: 'left' | 'right' | 'both' };
-  TrackingRestored: { hand: 'left' | 'right' | 'both' };
+  TrackingLost: { hand: GestureHand };
+  TrackingRestored: { hand: GestureHand };
 }
 
 type Handler<T> = (payload: T) => void;

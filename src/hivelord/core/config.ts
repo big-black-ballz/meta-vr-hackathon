@@ -22,3 +22,6 @@ export const DEBUG_OVERLAY_ENABLED = true;
 export const DEBUG_OVERLAY_KEY = 'KeyH';
 export const PAUSE_KEY = 'KeyP';
 export const DEBUG_OVERLAY_UPDATE_HZ = 4;
+
+// Optional dev-only fingertip spheres and palm-normal lines.
+export const DEBUG_GESTURE_VISUALS = true;

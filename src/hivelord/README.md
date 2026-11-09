@@ -14,6 +14,10 @@ game/      objectives, chapters, save integration (Level 15)
 debug/     debug overlay and dev commands
 ```
 
-Level 0 only: state machine, typed event bus, time control, debug overlay and
-the legacy productivity flag. Do not add swarm, abilities or enemies until
-their levels are requested.
+Level 0: state machine, typed event bus, time control, debug overlay and the
+legacy productivity flag.
+
+Level 1: hand joint reading, six gestures (pinch, fist, flat palm, cupped,
+open palm, two-palm stop), frame debounce and hysteresis, conflict priority,
+dominant-hand setting, tracking-loss grace, forced-gesture dev keys and an
+extended debug overlay. No swarm, abilities, UI menus or enemies yet.
