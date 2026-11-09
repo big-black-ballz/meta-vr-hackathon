@@ -41,6 +41,12 @@ interface HandVisual {
   normalAttribute: BufferAttribute;
 }
 
+interface ForcedGestureState {
+  left: GestureId | null;
+  right: GestureId | null;
+  stop: boolean;
+}
+
 /**
  * Reads hand joints once per frame, runs the gesture detector and exposes the
  * dev-only forced-gesture keys and fingertip visuals.
@@ -51,6 +57,11 @@ export class HivelordInputSystem extends createSystem({}) {
   private readonly headForward = new Vector3();
   private readonly quaternion = new Quaternion();
   private readonly handVisuals: HandVisual[] = [];
+  private readonly forcedState: ForcedGestureState = {
+    left: null,
+    right: null,
+    stop: false,
+  };
   private visualsEnabled = false;
 
   init(): void {
@@ -115,17 +126,15 @@ export class HivelordInputSystem extends createSystem({}) {
     this.headForward.set(0, 0, -1).applyQuaternion(this.quaternion);
   }
 
-  private readForcedGestures(): {
-    left: GestureId | null;
-    right: GestureId | null;
-    stop: boolean;
-  } {
+  private readForcedGestures(): ForcedGestureState {
+    const forced = this.forcedState;
+    forced.left = null;
+    forced.right = null;
+    forced.stop = false;
+
     const keyboard = this.input.keyboard;
-    let left: GestureId | null = null;
-    let right: GestureId | null = null;
-    let stop = false;
     if (keyboard == null) {
-      return { left, right, stop };
+      return forced;
     }
 
     let useLeft = false;
@@ -142,14 +151,14 @@ export class HivelordInputSystem extends createSystem({}) {
         continue;
       }
       if (entry.gesture === 'stop') {
-        stop = true;
+        forced.stop = true;
       } else if (useLeft) {
-        left = entry.gesture;
+        forced.left = entry.gesture;
       } else {
-        right = entry.gesture;
+        forced.right = entry.gesture;
       }
     }
-    return { left, right, stop };
+    return forced;
   }
 
   private createVisuals(): void {

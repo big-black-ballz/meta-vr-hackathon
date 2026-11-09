@@ -69,7 +69,6 @@ export class GestureDetector {
   private readonly headRight = new Vector3();
   private readonly toHand = new Vector3();
   private readonly worldUp = new Vector3(0, 1, 0);
-  private readonly tmpData = new Vector3();
   private readonly eventPinch = new Vector3();
   private readonly eventNormal = new Vector3();
   private readonly eventPalm = new Vector3();
