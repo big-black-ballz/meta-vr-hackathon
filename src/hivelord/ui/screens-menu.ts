@@ -4,6 +4,7 @@ import { CanvasPanel, UIScreen, UI_PPM } from './screen.js';
 import {
   controlAt,
   drawChrome,
+  drawChromeGlow,
   drawControl,
   makeControl,
   type Control,
@@ -68,13 +69,17 @@ export class StartScreen extends UIScreen {
       this.panel.widthPx,
       150,
     );
+    const begin = this.controls.find((c) => c.id === 'begin');
+    if (begin != null) {
+      begin.variant = 'primary';
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
     if (this.panel == null) {
       return;
     }
-    drawChrome(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.appTitle);
+    drawChromeGlow(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.appTitle);
     for (const c of this.controls) {
       drawControl(ctx, c);
     }
@@ -139,7 +144,7 @@ export class LoadingScreen extends UIScreen {
     }
     drawChrome(ctx, this.panel.widthPx, this.panel.heightPx, this.label);
     ctx.textAlign = 'center';
-    ctx.fillStyle = THEME.textDim;
+    ctx.fillStyle = THEME.textMuted;
     ctx.font = `500 ${THEME.smallPx}px ${THEME.fontFamily}`;
     ctx.fillText(
       STRINGS.loadingTip,
@@ -192,6 +197,10 @@ export class ChapterScreen extends UIScreen {
       this.panel.widthPx,
       210,
     );
+    const cont = this.controls.find((c) => c.id === 'continue');
+    if (cont != null) {
+      cont.variant = 'primary';
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D): void {

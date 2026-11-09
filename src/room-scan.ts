@@ -18,6 +18,7 @@ import {
   VisibilityState,
   XRPlane,
 } from '@iwsdk/core';
+import { THEME, withAlpha } from './hivelord/ui/theme.js';
 
 const SCAN_SECONDS = 12;
 const PANEL_HOLD_SECONDS = 2.5;
@@ -173,6 +174,7 @@ export class RoomScanSystem extends createSystem({
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
+      toneMapped: false,
     });
     const mesh = new Mesh(new PlaneGeometry(0.95, 0.48), material);
     mesh.name = 'room-scan-panel';
@@ -211,43 +213,40 @@ export class RoomScanSystem extends createSystem({
           : 'Looking for surfaces...';
 
     ctx.clearRect(0, 0, 640, 320);
-    ctx.fillStyle = 'rgba(7, 14, 26, 0.9)';
+    ctx.fillStyle = withAlpha(THEME.panel, THEME.panelOpacity);
     this.roundRect(ctx, 12, 12, 616, 296, 28);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(111, 230, 255, 0.55)';
+    ctx.strokeStyle = withAlpha(THEME.primary, 0.5);
     ctx.lineWidth = 2;
     this.roundRect(ctx, 12, 12, 616, 296, 28);
     ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(235, 250, 255, 0.98)';
+    ctx.fillStyle = THEME.text;
     ctx.font = '600 32px system-ui, sans-serif';
     ctx.fillText('Scanning your room', 320, 62);
 
-    ctx.fillStyle = 'rgba(205, 232, 245, 0.92)';
+    ctx.fillStyle = THEME.textMuted;
     ctx.font = '500 20px system-ui, sans-serif';
     ctx.fillText(instruction, 320, 112);
 
-    ctx.fillStyle = 'rgba(12, 24, 40, 0.95)';
+    ctx.fillStyle = THEME.panelEdge;
     this.roundRect(ctx, 64, 158, 512, 34, 17);
     ctx.fill();
-    ctx.fillStyle = 'rgba(111, 230, 255, 0.9)';
+    ctx.fillStyle = THEME.primary;
     this.roundRect(ctx, 64, 158, 512 * progress, 34, 17);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(210, 238, 250, 0.9)';
+    ctx.fillStyle = THEME.text;
     ctx.font = '600 18px system-ui, sans-serif';
     ctx.fillText(`${Math.round(progress * 100)}%`, 320, 74 + 130);
 
-    ctx.fillStyle =
-      count > 0
-        ? 'rgba(150, 255, 210, 0.95)'
-        : 'rgba(255, 220, 150, 0.95)';
+    ctx.fillStyle = count > 0 ? THEME.success : THEME.warning;
     ctx.font = '500 18px system-ui, sans-serif';
     ctx.fillText(status, 320, 240);
 
-    ctx.fillStyle = 'rgba(170, 200, 220, 0.7)';
+    ctx.fillStyle = THEME.textFaint;
     ctx.font = '400 15px system-ui, sans-serif';
     ctx.fillText('Re-enter XR to scan again', 320, 282);
 

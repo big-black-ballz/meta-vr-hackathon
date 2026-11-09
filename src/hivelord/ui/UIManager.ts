@@ -21,6 +21,7 @@ function setContext(next: InputContext): void {
 export interface ConfirmOptions {
   title: string;
   message: string;
+  destructive: boolean;
   onConfirm: () => void;
 }
 

@@ -1,37 +1,33 @@
 import type { World } from '@iwsdk/core';
 import { STRINGS } from './strings.js';
+import { themeToCss } from './theme.js';
 
 let overlay: HTMLDivElement | null = null;
 let statusLine: HTMLDivElement | null = null;
 let worldRef: World | null = null;
 let dismissed = false;
 
-function styleOverlay(div: HTMLDivElement): void {
-  div.style.position = 'fixed';
-  div.style.inset = '0';
-  div.style.display = 'flex';
-  div.style.alignItems = 'center';
-  div.style.justifyContent = 'center';
-  div.style.background = 'rgba(4, 8, 16, 0.92)';
-  div.style.zIndex = '50';
-  div.style.fontFamily = 'system-ui, sans-serif';
-}
+const STYLE_ID = 'hivelord-presession-theme';
 
-function makeButton(label: string): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.textContent = label;
-  button.style.display = 'block';
-  button.style.width = '100%';
-  button.style.marginTop = '12px';
-  button.style.padding = '14px';
-  button.style.fontSize = '18px';
-  button.style.fontWeight = '600';
-  button.style.color = '#06121f';
-  button.style.background = '#6fe6ff';
-  button.style.border = 'none';
-  button.style.borderRadius = '10px';
-  button.style.cursor = 'pointer';
-  return button;
+function ensureThemeStyle(): void {
+  if (document.getElementById(STYLE_ID) != null) {
+    return;
+  }
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent =
+    themeToCss() +
+    `#hivelord-presession{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--hiv-base);z-index:50;font-family:system-ui,sans-serif;}` +
+    `#hivelord-presession .card{max-width:520px;margin:24px;padding:32px;background:var(--hiv-panel);border:1px solid var(--hiv-panel-edge);border-radius:18px;box-shadow:0 0 42px var(--hiv-primary-glow);color:var(--hiv-text);}` +
+    `#hivelord-presession h1{font-size:28px;margin:0 0 12px 0;color:var(--hiv-primary);}` +
+    `#hivelord-presession p{font-size:16px;line-height:1.5;color:var(--hiv-text-muted);}` +
+    `#hivelord-presession .status{margin-top:16px;font-size:15px;color:var(--hiv-warning);}` +
+    `#hivelord-presession button{display:block;width:100%;margin-top:12px;padding:14px;font-size:18px;font-weight:600;border-radius:10px;cursor:pointer;}` +
+    `#hivelord-presession .enter{color:var(--hiv-text-on-primary);background:var(--hiv-primary);border:none;}` +
+    `#hivelord-presession .virtual{background:transparent;color:var(--hiv-primary);border:2px solid var(--hiv-primary);}` +
+    `#hivelord-presession button:focus-visible{outline:3px solid var(--hiv-primary);outline-offset:2px;}` +
+    `@media (prefers-reduced-motion: reduce){#hivelord-presession *{transition:none !important;animation:none !important;}}`;
+  document.head.append(style);
 }
 
 async function checkSupport(): Promise<string | null> {
@@ -57,52 +53,41 @@ async function checkSupport(): Promise<string | null> {
 }
 
 /**
- * Plain-DOM pre-session layer: compatibility messages, minimal branding and
- * the desktop-visitor explanation. The SDK welcome panel keeps its own Enter
- * button; this layer handles messaging before any session exists.
+ * Plain-DOM pre-session layer styled from the shared theme tokens: obsidian
+ * card, gold title and primary button, warning status with a triangle glyph
+ * (never color alone), visible keyboard focus, reduced-motion respect.
  */
 export function initPresession(world: World): void {
   worldRef = world;
   if (overlay != null) {
     return;
   }
+  ensureThemeStyle();
   const div = document.createElement('div');
-  styleOverlay(div);
+  div.id = 'hivelord-presession';
   const card = document.createElement('div');
-  card.style.maxWidth = '520px';
-  card.style.margin = '24px';
-  card.style.padding = '32px';
-  card.style.background = '#0a1220';
-  card.style.border = '2px solid rgba(111, 230, 255, 0.55)';
-  card.style.borderRadius = '18px';
-  card.style.color = '#ebfaff';
+  card.className = 'card';
   const title = document.createElement('h1');
-  title.style.fontSize = '28px';
-  title.style.margin = '0 0 12px 0';
   title.textContent = STRINGS.presessionTitle;
   const pitch = document.createElement('p');
-  pitch.style.fontSize = '16px';
-  pitch.style.lineHeight = '1.5';
-  pitch.style.color = '#a0c4d8';
   pitch.textContent = STRINGS.appPitch;
   statusLine = document.createElement('div');
-  statusLine.style.marginTop = '16px';
-  statusLine.style.fontSize = '15px';
-  statusLine.style.color = '#ffa23a';
-  const enter = makeButton(STRINGS.presessionEnterXR);
+  statusLine.className = 'status';
+  const enter = document.createElement('button');
+  enter.className = 'enter';
+  enter.textContent = STRINGS.presessionEnterXR;
   enter.addEventListener('click', () => {
     try {
       worldRef?.launchXR();
     } catch {
       if (statusLine != null) {
-        statusLine.textContent = STRINGS.presessionPermissionDenied;
+        statusLine.textContent = `\u25B2 ${STRINGS.presessionPermissionDenied}`;
       }
     }
   });
-  const virtual = makeButton(STRINGS.presessionVirtualMode);
-  virtual.style.background = 'transparent';
-  virtual.style.color = '#6fe6ff';
-  virtual.style.border = '2px solid rgba(111, 230, 255, 0.55)';
+  const virtual = document.createElement('button');
+  virtual.className = 'virtual';
+  virtual.textContent = STRINGS.presessionVirtualMode;
   virtual.addEventListener('click', () => {
     dismissed = true;
     hidePresession();
@@ -121,11 +106,11 @@ export function initPresession(world: World): void {
       return;
     }
     if (message === STRINGS.presessionNoWebXR) {
-      statusLine.textContent = `${STRINGS.presessionDesktop}`;
+      statusLine.textContent = `\u25B2 ${STRINGS.presessionDesktop}`;
       enter.style.display = 'none';
       return;
     }
-    statusLine.textContent = message;
+    statusLine.textContent = `\u25B2 ${message}`;
   });
 }
 

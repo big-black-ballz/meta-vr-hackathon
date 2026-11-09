@@ -1,0 +1,30 @@
+{
+  "$schema": "ui-color-allowlist",
+  "scope": [
+    "src/hivelord/ui",
+    "src/hivelord/input",
+    "src/room-scan.ts"
+  ],
+  "excludedFiles": [
+    {
+      "file": "src/hivelord/ui/theme.ts",
+      "reason": "Single source of truth: owns every UI token by design."
+    },
+    {
+      "file": "src/toys.ts",
+      "reason": "3D toy and surface materials (world visuals), out of scope for the UI reskin."
+    },
+    {
+      "file": "src/reality-dial.ts",
+      "reason": "World dial and sky effects, out of scope for the UI reskin."
+    },
+    {
+      "file": "src/hivelord/debug/DebugOverlay.ts",
+      "reason": "Dev-only overlay, intentionally neutral (no gold) so it is never mistaken for game UI."
+    },
+    {
+      "file": "public/ui/welcome.uikitml",
+      "reason": "Starter Horizon-kit panel (light system surface), not Hivelord UI."
+    }
+  ]
+}

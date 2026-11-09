@@ -5,7 +5,16 @@ import type { GestureDetector } from '../input/GestureDetector.js';
 import { CanvasPanel } from './screen.js';
 import { drawRadial } from './controls.js';
 import { STRINGS } from './strings.js';
-import { THEME } from './theme.js';
+import { THEME, withAlpha } from './theme.js';
+import {
+  drawCheck,
+  drawHex,
+  drawInfo,
+  drawLock,
+  drawWarnTriangle,
+  drawX,
+} from './draw/icons.js';
+import { roundRectPath } from './draw/panel.js';
 import { settings } from './settings.js';
 import { getPlaceholderSkills } from './placeholderSkills.js';
 
@@ -29,16 +38,16 @@ interface SubtitleItem {
 const tmpA = new Vector3();
 const tmpB = new Vector3();
 const tmpC = new Vector3();
-const tmpQ = new Quaternion();
 
 function subtitleDuration(text: string): number {
   return Math.min(8, 2 + text.length * 0.06);
 }
 
 /**
- * Non-blocking HUD and feedback widgets: ability bar at the dominant wrist,
- * fingertip charge ring, placeholder stun meter, objective hint, toast queue,
- * subtitle queue and the tracking-lost banner. All driven by events and
+ * Non-blocking HUD and feedback widgets: hexagonal ability slots at the
+ * dominant wrist, fingertip charge ring, placeholder stun meter, objective
+ * hint on a backing plate, toast queue with icons, subtitles with
+ * background modes and the tracking-lost banner. All driven by events and
  * placeholder/test hooks; no gameplay logic.
  */
 export class HUD {
@@ -53,6 +62,7 @@ export class HUD {
 
   private cooldownLeft: number[] = [0, 0, 0, 0, 0, 0];
   private cooldownTotal: number[] = [8, 8, 8, 8, 8, 8];
+  private activeAbility = -1;
   private objectiveText: string = STRINGS.objectiveDefault;
   private toastQueue: ToastItem[] = [];
   private subtitleQueue: SubtitleItem[] = [];
@@ -81,6 +91,7 @@ export class HUD {
       const index = list.findIndex((entry) => entry.id === ability);
       if (index >= 0) {
         this.cooldownLeft[index] = this.cooldownTotal[index] ?? 8;
+        this.activeAbility = index;
         this.ability?.setDirty();
       }
     });
@@ -151,7 +162,6 @@ export class HUD {
       this.banner?.setVisible(false);
       return;
     }
-    const showHud = settings.get('hudVisible');
     for (let i = 0; i < this.cooldownLeft.length; i++) {
       if (this.cooldownLeft[i] > 0) {
         this.cooldownLeft[i] = Math.max(0, this.cooldownLeft[i] - dt);
@@ -185,14 +195,13 @@ export class HUD {
     }
 
     this.accum += dt;
-    const tick = this.accum >= 1 / HUD_HZ;
-    if (tick) {
+    if (this.accum >= 1 / HUD_HZ) {
       this.accum = 0;
     }
 
     this.placeFollowWidgets(headPos, headQuat);
-    this.placeWristWidgets(headPos, headQuat, detector, showHud);
-    this.renderAll(showHud, tick);
+    this.placeWristWidgets(headPos, detector, settings.get('hudVisible'));
+    this.renderAll();
   }
 
   private faceHead(mesh: { position: Vector3; quaternion: Quaternion }, headPos: Vector3): void {
@@ -277,7 +286,6 @@ export class HUD {
 
   private placeWristWidgets(
     headPos: Vector3,
-    _headQuat: Quaternion,
     detector: GestureDetector | null,
     showHud: boolean,
   ): void {
@@ -301,23 +309,24 @@ export class HUD {
         this.faceHead(this.charge.mesh, headPos);
       }
     }
-    void _headQuat;
   }
 
-  private renderAll(showHud: boolean, tick: boolean): void {
-    this.ability?.render((ctx) => this.drawAbilityBar(ctx, showHud));
+  private renderAll(): void {
+    this.ability?.render((ctx) => this.drawAbilityBar(ctx));
     this.objective?.render((ctx) => {
       const c = this.objective;
       if (c == null) {
         return;
       }
+      ctx.fillStyle = withAlpha(THEME.base, 0.55);
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+      ctx.fill();
+      drawHex(ctx, 26, c.heightPx / 2, 11, THEME.accent, null, 2);
+      ctx.fillStyle = THEME.accentText;
+      ctx.font = `600 ${THEME.smallPx}px ${THEME.fontFamily}`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(8, 15, 26, 0.75)';
-      ctx.fillRect(0, 0, c.widthPx, c.heightPx);
-      ctx.fillStyle = THEME.accent;
-      ctx.font = `600 ${THEME.smallPx}px ${THEME.fontFamily}`;
-      ctx.fillText(this.objectiveText, 18, c.heightPx / 2, c.widthPx - 36);
+      ctx.fillText(this.objectiveText, 46, c.heightPx / 2, c.widthPx - 60);
     });
     this.toasts?.render((ctx) => {
       const c = this.toasts;
@@ -327,39 +336,51 @@ export class HUD {
       const items = this.toastQueue.slice(-2);
       let y = 10;
       for (const item of items) {
-        ctx.fillStyle =
+        const bar =
           item.kind === 'warning'
-            ? 'rgba(60, 35, 10, 0.9)'
+            ? THEME.warning
             : item.kind === 'success'
-              ? 'rgba(10, 50, 30, 0.9)'
-              : 'rgba(8, 15, 26, 0.9)';
-        ctx.fillRect(10, y, c.widthPx - 20, 62);
-        ctx.fillStyle =
-          item.kind === 'warning' ? THEME.warning : THEME.text;
+              ? THEME.success
+              : THEME.primary;
+        ctx.fillStyle = withAlpha(THEME.panel, THEME.panelOpacity);
+        roundRectPath(ctx, 10, y, c.widthPx - 20, 62, 10);
+        ctx.fill();
+        ctx.fillStyle = bar;
+        ctx.fillRect(10, y + 8, 4, 46);
+        if (item.kind === 'warning') {
+          drawWarnTriangle(ctx, 40, y + 31, 26, THEME.warning);
+        } else if (item.kind === 'success') {
+          drawCheck(ctx, 40, y + 31, 26, THEME.success);
+        } else {
+          drawInfo(ctx, 40, y + 31, 26, THEME.primary);
+        }
+        ctx.fillStyle = THEME.text;
         ctx.font = `500 ${THEME.smallPx}px ${THEME.fontFamily}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(item.text, 24, y + 31, c.widthPx - 48);
+        ctx.fillText(item.text, 60, y + 31, c.widthPx - 76);
         y += 70;
       }
     });
-    void tick;
     this.subtitles?.render((ctx) => this.drawSubtitles(ctx));
     this.banner?.render((ctx) => {
       const c = this.banner;
       if (c == null) {
         return;
       }
-      ctx.fillStyle = 'rgba(60, 30, 8, 0.92)';
-      ctx.fillRect(0, 0, c.widthPx, c.heightPx);
+      ctx.fillStyle = withAlpha(THEME.panel, THEME.panelOpacity);
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+      ctx.fill();
       ctx.strokeStyle = THEME.warning;
       ctx.lineWidth = 3;
-      ctx.strokeRect(3, 3, c.widthPx - 6, c.heightPx - 6);
-      ctx.fillStyle = THEME.warning;
+      roundRectPath(ctx, 2, 2, c.widthPx - 4, c.heightPx - 4, 12);
+      ctx.stroke();
+      drawWarnTriangle(ctx, 44, c.heightPx / 2, 34, THEME.warning);
+      ctx.fillStyle = THEME.text;
       ctx.font = `600 ${THEME.buttonPx}px ${THEME.fontFamily}`;
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(STRINGS.trackingBanner, c.widthPx / 2, c.heightPx / 2);
+      ctx.fillText(STRINGS.trackingBanner, 72, c.heightPx / 2, c.widthPx - 88);
     });
     this.charge?.render((ctx) => {
       const c = this.charge;
@@ -380,40 +401,71 @@ export class HUD {
       if (c == null) {
         return;
       }
-      ctx.fillStyle = 'rgba(8, 15, 26, 0.85)';
-      ctx.fillRect(0, 0, c.widthPx, c.heightPx);
-      ctx.fillStyle = THEME.danger;
-      const w = c.widthPx * Math.max(0, Math.min(1, this.stunProgress));
-      ctx.fillRect(0, 0, w, c.heightPx);
+      ctx.fillStyle = THEME.panelRaised;
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, c.heightPx / 2);
+      ctx.fill();
+      ctx.strokeStyle = THEME.panelEdge;
+      ctx.lineWidth = 1;
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, c.heightPx / 2);
+      ctx.stroke();
+      const p = Math.max(0, Math.min(1, this.stunProgress));
+      if (p > 0) {
+        ctx.fillStyle = THEME.danger;
+        const w = Math.max(c.heightPx, c.widthPx * p);
+        roundRectPath(ctx, 0, 0, w, c.heightPx, c.heightPx / 2);
+        ctx.fill();
+      }
     });
   }
 
-  private drawAbilityBar(ctx: CanvasRenderingContext2D, showHud: boolean): void {
+  private drawAbilityBar(ctx: CanvasRenderingContext2D): void {
     const c = this.ability;
     if (c == null) {
       return;
     }
-    void showHud;
-    ctx.fillStyle = 'rgba(8, 15, 26, 0.8)';
-    ctx.fillRect(0, 0, c.widthPx, c.heightPx);
+    ctx.fillStyle = withAlpha(THEME.panel, THEME.panelOpacity);
+    roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+    ctx.fill();
     const list = getPlaceholderSkills();
     const slot = c.widthPx / 6;
     for (let i = 0; i < 6; i++) {
       const skill = list[i];
       const cx = slot * (i + 0.5);
       const cy = c.heightPx / 2;
-      const total = this.cooldownTotal[i] ?? 8;
-      const left = this.cooldownLeft[i] ?? 0;
-      const ready = left <= 0;
+      const r = 32;
       if (skill != null && !skill.unlocked) {
-        ctx.fillStyle = THEME.disabled;
-        ctx.font = `600 ${THEME.tinyPx}px ${THEME.fontFamily}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('X', cx, cy);
+        drawHex(ctx, cx, cy, r, THEME.locked, null, 2);
+        drawX(ctx, cx, cy - 6, 22, THEME.locked);
+        drawLock(ctx, cx, cy + 16, 18, THEME.locked);
         continue;
       }
-      drawRadial(ctx, cx, cy, 34, total > 0 ? 1 - left / total : 1, ready);
+      const total = this.cooldownTotal[i] ?? 8;
+      const left = this.cooldownLeft[i] ?? 0;
+      const cooling = left > 0;
+      if (i === this.activeAbility && !cooling) {
+        ctx.save();
+        ctx.shadowColor = withAlpha(THEME.accent, 0.35);
+        ctx.shadowBlur = 14;
+        drawHex(ctx, cx, cy, r, THEME.accent, null, 3);
+        ctx.restore();
+      } else {
+        drawHex(ctx, cx, cy, r, THEME.primary, null, 2);
+      }
+      if (cooling) {
+        const p = total > 0 ? 1 - left / total : 1;
+        ctx.strokeStyle = THEME.primary;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - 8, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = THEME.text;
+        ctx.font = `600 ${THEME.smallPx}px ${THEME.fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(Math.ceil(left)), cx, cy);
+      } else {
+        drawCheck(ctx, cx, cy, 24, THEME.success);
+      }
     }
   }
 
@@ -431,18 +483,30 @@ export class HUD {
           : THEME.bodyPx;
     this.subtitleSizePx = size;
     const bg = settings.get('subtitleBg');
-    if (bg === 'solid') {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.fillRect(0, 0, c.widthPx, c.heightPx);
-    } else if (bg === 'light') {
-      ctx.fillStyle = 'rgba(8, 15, 26, 0.75)';
-      ctx.fillRect(0, 0, c.widthPx, c.heightPx);
-    }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = THEME.accent;
+    if (bg === 'solid') {
+      ctx.fillStyle = withAlpha(THEME.base, 0.9);
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+      ctx.fill();
+      ctx.strokeStyle = THEME.panelEdge;
+      ctx.lineWidth = 1;
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+      ctx.stroke();
+    } else if (bg === 'light') {
+      ctx.fillStyle = withAlpha(THEME.base, 0.45);
+      roundRectPath(ctx, 0, 0, c.widthPx, c.heightPx, 12);
+      ctx.fill();
+    }
+    ctx.fillStyle = THEME.accentText;
     ctx.font = `700 ${THEME.smallPx}px ${THEME.fontFamily}`;
     ctx.fillText(active.speaker, 24, 30);
+    if (bg === 'none') {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = THEME.base;
+      ctx.font = `500 ${size}px ${THEME.fontFamily}`;
+      ctx.strokeText(active.text, 24, 30 + size, c.widthPx - 48);
+    }
     ctx.fillStyle = THEME.text;
     ctx.font = `500 ${size}px ${THEME.fontFamily}`;
     ctx.fillText(active.text, 24, 30 + size, c.widthPx - 48);

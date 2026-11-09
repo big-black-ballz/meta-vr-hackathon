@@ -342,6 +342,7 @@ export class UISystem extends createSystem({
         setPendingConfirm({
           title: STRINGS.confirmTitle,
           message: STRINGS.confirmRestartMsg,
+          destructive: true,
           onConfirm: () => {
             gameState.setState('Playing', 'restart chapter');
             hivelordEvents.emit('ToastRequested', {
@@ -356,6 +357,7 @@ export class UISystem extends createSystem({
         setPendingConfirm({
           title: STRINGS.confirmTitle,
           message: STRINGS.confirmResetMsg,
+          destructive: true,
           onConfirm: () => {
             settings.clear();
             setMasterVolume(settings.get('master'));

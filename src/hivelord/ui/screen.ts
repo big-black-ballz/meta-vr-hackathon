@@ -52,6 +52,7 @@ export class CanvasPanel {
       map: this.texture,
       transparent: true,
       depthWrite: false,
+      toneMapped: false,
     });
     this.mesh = new Mesh(new PlaneGeometry(widthM, heightM), material);
     this.mesh.name = name;

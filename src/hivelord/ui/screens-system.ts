@@ -12,6 +12,7 @@ import {
 } from './controls.js';
 import { STRINGS } from './strings.js';
 import { THEME } from './theme.js';
+import { drawHex, drawLock, drawWarnTriangle } from './draw/icons.js';
 import {
   getErrorMessage,
   takePendingConfirm,
@@ -60,6 +61,10 @@ export class PauseScreen extends UIScreen {
         makeControl(ids[i], 'button', 48, y, bw, THEME.buttonHPx, labels[i]),
       );
       y += THEME.buttonHPx + THEME.buttonGapPx;
+    }
+    const resume = this.controls.find((c) => c.id === 'resume');
+    if (resume != null) {
+      resume.variant = 'primary';
     }
   }
 
@@ -311,17 +316,19 @@ export class SkillsScreen extends UIScreen {
   controls: Control[] = [];
 
   build(world: World): void {
-    const hM = (120 + 6 * 62 + 84) / UI_PPM;
+    const rowH = 72;
+    const rowStep = 76;
+    const hM = (120 + 6 * rowStep + 84) / UI_PPM;
     this.panel = new CanvasPanel(world, 'hivelord-ui-skills', 0.56, hM);
     const w = this.panel.widthPx;
     let y = 110;
     const list = getPlaceholderSkills();
     for (const skill of list) {
-      const row = makeControl(`skill-${skill.id}`, 'row', 48, y, w - 96, 56, skill.name);
+      const row = makeControl(`skill-${skill.id}`, 'row', 48, y, w - 96, rowH, skill.name);
       row.sub = skill.unlocked ? skill.gestureHint : STRINGS.skillsLocked;
       row.enabled = skill.unlocked;
       this.controls.push(row);
-      y += 62;
+      y += rowStep;
     }
     this.controls.push(
       makeControl('back', 'button', 48, y + 10, w - 96, 60, STRINGS.settingsBack),
@@ -350,6 +357,16 @@ export class SkillsScreen extends UIScreen {
     drawChrome(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.skillsTitle);
     for (const c of this.controls) {
       drawControl(ctx, c);
+      if (c.kind === 'row') {
+        const ix = c.x + c.w - 44;
+        const iy = c.y + c.h / 2;
+        if (c.enabled) {
+          drawHex(ctx, ix, iy, 20, THEME.primary, null, 2);
+        } else {
+          drawHex(ctx, ix, iy, 20, THEME.locked, null, 2);
+          drawLock(ctx, ix, iy, 22, THEME.textFaint);
+        }
+      }
     }
   }
 
@@ -398,6 +415,11 @@ export class ConfirmScreen extends UIScreen {
     if (msg != null) {
       msg.text = this.opts?.message ?? '';
     }
+    const confirm = this.controls.find((c) => c.id === 'confirm');
+    if (confirm != null) {
+      confirm.variant =
+        this.opts?.destructive === true ? 'destructive' : 'primary';
+    }
     for (const c of this.controls) {
       c.hover = c.id === 'cancel';
     }
@@ -444,7 +466,7 @@ export class ErrorScreen extends UIScreen {
     this.world = world;
     this.panel = new CanvasPanel(world, 'hivelord-ui-error', PANEL_W_M, 0.4);
     const w = this.panel.widthPx;
-    const msg = makeControl('msg', 'label', 40, 104, w - 80, 90, '');
+    const msg = makeControl('msg', 'label', 40, 138, w - 80, 64, '');
     const retry = makeControl(
       'retry',
       'button',
@@ -453,6 +475,7 @@ export class ErrorScreen extends UIScreen {
       w - 96,
       THEME.buttonHPx,
       STRINGS.errorRetry,
+      'primary',
     );
     const exit = makeControl(
       'exit',
@@ -479,6 +502,13 @@ export class ErrorScreen extends UIScreen {
       return;
     }
     drawChrome(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.errorTitle);
+    drawWarnTriangle(
+      ctx,
+      this.panel.widthPx / 2,
+      108,
+      30,
+      THEME.warning,
+    );
     for (const c of this.controls) {
       drawControl(ctx, c);
     }

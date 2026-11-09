@@ -6,6 +6,7 @@ import { CanvasPanel } from './screen.js';
 import { drawChrome, drawControl, makeControl, type Control } from './controls.js';
 import { STRINGS } from './strings.js';
 import { THEME } from './theme.js';
+import { settings } from './settings.js';
 import { buildHitMeshes, layoutHitMeshes, type HitRecord } from './hits.js';
 
 const PALM_FACE_DOT = 0.7;
@@ -49,9 +50,16 @@ export class WristMenu {
     ];
     let y = 108;
     for (let i = 0; i < ids.length; i++) {
-      this.controls.push(
-        makeControl(ids[i], 'button', 32, y, w - 64, 56, labels[i]),
-      );
+      const id = ids[i] ?? '';
+      if (id === 'togglehud') {
+        const toggle = makeControl(id, 'toggle', 32, y, w - 64, 56, labels[i] ?? '');
+        toggle.value = settings.get('hudVisible');
+        this.controls.push(toggle);
+      } else {
+        this.controls.push(
+          makeControl(id, 'button', 32, y, w - 64, 56, labels[i] ?? ''),
+        );
+      }
       y += 56 + 12;
     }
     this.hits = buildHitMeshes(world, 'wrist', w, this.panel.heightPx, this.controls, onDirty);
@@ -104,6 +112,14 @@ export class WristMenu {
     this.open = shouldOpen;
     if (this.panel == null || detector == null) {
       return;
+    }
+    const hudToggle = this.controls.find((c) => c.id === 'togglehud');
+    if (hudToggle != null) {
+      const visible = settings.get('hudVisible');
+      if (hudToggle.value !== visible) {
+        hudToggle.value = visible;
+        this.panel.setDirty();
+      }
     }
     this.panel.setVisible(this.open);
     layoutHitMeshes(this.hits, this.panel.mesh, this.open);

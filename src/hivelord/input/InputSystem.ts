@@ -14,6 +14,7 @@ import {
 import { DEBUG, DEBUG_GESTURE_VISUALS } from '../core/config.js';
 import { timeControl } from '../core/TimeControl.js';
 import { getInputContext } from '../ui/UIManager.js';
+import { THEME } from '../ui/theme.js';
 import {
   FORCE_GESTURE_KEYS,
   FORCE_LEFT_MODIFIER_KEYS,
@@ -173,7 +174,10 @@ export class HivelordInputSystem extends createSystem({}) {
 
   private createVisuals(): void {
     const sphereGeometry = new SphereGeometry(FINGERTIP_RADIUS, 8, 6);
-    const colors = [0x35d6ff, 0xffa23a];
+    const colors = [
+      Number.parseInt(THEME.primary.slice(1), 16),
+      Number.parseInt(THEME.accent.slice(1), 16),
+    ];
     for (let i = 0; i < 2; i++) {
       const material = new MeshBasicMaterial({ color: colors[i] });
       const thumb = new Mesh(sphereGeometry, material);
