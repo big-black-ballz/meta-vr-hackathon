@@ -203,6 +203,12 @@ const DEFINITIONS: ManifestEntry[] = [
     license: 'test', author: 'hivelord', source: 'scripts/gen-placeholders.mjs',
     notes: 'Truncated GLB; exercises the corrupt-file path.',
   },
+  {
+    id: 'test_texture', type: 'texture', url: 'textures/webxr.png', group: 'lazy',
+    critical: false, fallbackId: 'texture', approxSizeKB: 340, textureMax: 1024,
+    license: 'test', author: 'starter', source: 'public/textures/webxr.png',
+    notes: 'Real 2260x640 PNG; exercises size clamp and warmup upload.',
+  },
 ];
 
 const BY_ID = new Map<string, ManifestEntry>(DEFINITIONS.map((e) => [e.id, e]));

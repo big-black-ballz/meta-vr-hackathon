@@ -11,15 +11,17 @@ import {
   getGroupModels,
   getStats,
   isReady,
+  loadAsset,
   loadGroup,
   setMaxAnisotropy,
   unloadGroup,
 } from './AssetManager.js';
 import { validateManifest } from './manifest.js';
 import { hookFirstGestureUnlock, unlockAudio } from './loaders/audio.js';
+import { getModelScene } from './loaders/models.js';
 import { WarmupQueue } from './warmup.js';
 import { checkSceneBudgets, estimateTextureMB } from './budgets.js';
-import { cycleFailMode, toggleGallery } from './devtools.js';
+import { cycleFailMode, reloadGroup, toggleGallery } from './devtools.js';
 import { setErrorMessage } from '../ui/UIManager.js';
 import { assetUrl } from './assetUrl.js';
 
@@ -124,6 +126,9 @@ export class AssetSystem extends createSystem({}) {
 
     if (this.warmup.pending > 0) {
       this.warmup.pump(this.world.renderer, this.world.camera);
+      if (this.warmup.pending === 0 && DEBUG) {
+        console.info(`[Hivelord] gpu warm-up done in ${this.warmup.totalMs}ms`);
+      }
     }
 
     const stats = getStats();
@@ -139,6 +144,35 @@ export class AssetSystem extends createSystem({}) {
       }
       if (keyboard?.getKeyDown('KeyZ') === true) {
         cycleFailMode();
+      }
+      if (keyboard?.getKeyDown('KeyA') === true) {
+        void loadGroup('lazy')
+          .then((result) => {
+            console.info(
+              `[Hivelord] lazy test group done in ${Math.round(result.ms)}ms, failed ${result.failed}`,
+            );
+          })
+          .catch((error: unknown) => {
+            console.warn('[Hivelord] lazy test group failed', error);
+          });
+      }
+      if (keyboard?.getKeyDown('KeyD') === true) {
+        void this.testUnloadRoundTrip();
+      }
+      if (keyboard?.getKeyDown('KeyS') === true) {
+        void reloadGroup('boot');
+      }
+      if (keyboard?.getKeyDown('KeyF') === true) {
+        loadAsset('voice_oldyou_intro').then(
+          (record) => {
+            console.info(
+              `[Hivelord] on-demand audio voice_oldyou_intro: ${record.fromFallback ? 'fallback silence' : 'decoded'}`,
+            );
+          },
+          (error: unknown) => {
+            console.warn('[Hivelord] on-demand audio failed', error);
+          },
+        );
       }
     }
   }
@@ -168,15 +202,29 @@ export class AssetSystem extends createSystem({}) {
     }, 10000);
   }
 
-  /** Test hook: load chapter1 then unload it and compare renderer counts. */
+  /**
+   * Test hook: render boot models, unload the group, compare GPU counts.
+   * Resources must be rendered first because renderer.info only tracks
+   * uploaded GPU buffers. Press S afterwards to reload boot.
+   */
   async testUnloadRoundTrip(): Promise<{ before: [number, number]; after: [number, number] }> {
     const info = this.world.renderer.info;
     const before: [number, number] = [info.memory.geometries, info.memory.textures];
-    await loadGroup('chapter1');
-    unloadGroup('chapter1');
+    await loadGroup('boot');
+    const temps: Array<{ dispose: () => void }> = [];
+    for (const model of getGroupModels('boot')) {
+      temps.push(this.world.createTransformEntity(getModelScene(model.key)));
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 800));
+    const peak: [number, number] = [info.memory.geometries, info.memory.textures];
+    unloadGroup('boot');
+    for (const temp of temps) {
+      temp.dispose();
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 400));
     const after: [number, number] = [info.memory.geometries, info.memory.textures];
     console.info(
-      `[Hivelord] unload round-trip geometries ${before[0]}->${after[0]}, textures ${before[1]}->${after[1]}`,
+      `[Hivelord] unload round-trip geometries ${before[0]}->${peak[0]}->${after[0]}, textures ${before[1]}->${peak[1]}->${after[1]}`,
     );
     return { before, after };
   }

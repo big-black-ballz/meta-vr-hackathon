@@ -16,6 +16,8 @@ import {
 } from './AssetManager.js';
 import { getModelScene } from './loaders/models.js';
 import type { AssetGroupName } from './manifest.js';
+import { GameStates, gameState } from '../core/GameState.js';
+import { setErrorMessage } from '../ui/UIManager.js';
 
 const FAIL_MODES: FailMode[] = ['off', 'missing', 'corrupt', 'timeout', 'slow'];
 let failIndex = 0;
@@ -125,11 +127,18 @@ export function cycleFailMode(): FailMode {
 export async function reloadGroup(name: AssetGroupName): Promise<void> {
   const before = getStats().groupMs[name] ?? 0;
   unloadGroup(name);
-  const result = await loadGroup(name);
-  const after = getStats().groupMs[name] ?? 0;
-  console.info(
-    `[Hivelord] asset reload ${name}: was ${before}ms, now ${after}ms, failed ${result.failed}`,
-  );
+  try {
+    const result = await loadGroup(name);
+    const after = getStats().groupMs[name] ?? 0;
+    console.info(
+      `[Hivelord] asset reload ${name}: was ${before}ms, now ${after}ms, failed ${result.failed}`,
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[Hivelord] asset reload ${name} failed: ${reason}`);
+    setErrorMessage(`Asset reload failed: ${reason}`);
+    gameState.setState(GameStates.Error, 'asset reload failed');
+  }
 }
 
 export function isGalleryOpen(): boolean {
