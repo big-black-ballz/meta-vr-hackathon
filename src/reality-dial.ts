@@ -396,6 +396,7 @@ export class RealityDialSystem extends createSystem({
   dial: { required: [RealityDial] },
 }) {
   private dialEntity: Entity | undefined;
+  private dialObject: Object3D | undefined;
   private needlePivot: Object3D | undefined;
   private elapsed = 0;
   private inputScrubbing = false;
@@ -405,6 +406,7 @@ export class RealityDialSystem extends createSystem({
   private handPinchStartValue = 0;
   private handPosition = new Vector3();
   private tmpQuat = new Quaternion();
+  private anchor = new Vector3();
 
   private planeGeometry!: PlaneGeometry;
   private membraneMaterial!: ShaderMaterial;
@@ -450,6 +452,7 @@ export class RealityDialSystem extends createSystem({
     }
     entity.object3D.position.set(0, 0.95, -1.25);
     entity.object3D.scale.setScalar(0.18);
+    this.dialObject = entity.object3D;
 
     const disc = new Mesh(
       new CircleGeometry(0.66, 32),
@@ -850,6 +853,20 @@ export class RealityDialSystem extends createSystem({
       value = moveToward(value, target, delta / EASE_SECONDS);
     }
 
+    const head = this.player.head;
+    if (head != null) {
+      head.updateWorldMatrix(true, false);
+      this.anchor.setFromMatrixPosition(head.matrixWorld);
+      this.anchor.y = 0;
+    }
+    if (this.dialObject != null) {
+      this.dialObject.position.set(
+        this.anchor.x,
+        0.95,
+        this.anchor.z - 1.25,
+      );
+    }
+
     this.publish(value, target, scrubbing);
     if (this.needlePivot != null) {
       this.needlePivot.rotation.z = -Math.PI / 2 + value * Math.PI;
@@ -889,19 +906,35 @@ export class RealityDialSystem extends createSystem({
       const mesh = plane.mesh;
       mesh.visible = membraneVisible;
       if (plane.role === 'front') {
-        mesh.position.set(0, ROOM_H / 2, -(ROOM_HZ - front));
+        mesh.position.set(
+          this.anchor.x,
+          ROOM_H / 2,
+          this.anchor.z - (ROOM_HZ - front),
+        );
         mesh.rotation.set(0, 0, 0);
         mesh.scale.set(width, ROOM_H, 1);
       } else if (plane.role === 'back') {
-        mesh.position.set(0, ROOM_H / 2, ROOM_HZ - front);
+        mesh.position.set(
+          this.anchor.x,
+          ROOM_H / 2,
+          this.anchor.z + ROOM_HZ - front,
+        );
         mesh.rotation.set(0, Math.PI, 0);
         mesh.scale.set(width, ROOM_H, 1);
       } else if (plane.role === 'left') {
-        mesh.position.set(-(ROOM_HX - front), ROOM_H / 2, 0);
+        mesh.position.set(
+          this.anchor.x - (ROOM_HX - front),
+          ROOM_H / 2,
+          this.anchor.z,
+        );
         mesh.rotation.set(0, Math.PI / 2, 0);
         mesh.scale.set(depth, ROOM_H, 1);
       } else {
-        mesh.position.set(ROOM_HX - front, ROOM_H / 2, 0);
+        mesh.position.set(
+          this.anchor.x + ROOM_HX - front,
+          ROOM_H / 2,
+          this.anchor.z,
+        );
         mesh.rotation.set(0, -Math.PI / 2, 0);
         mesh.scale.set(depth, ROOM_H, 1);
       }
@@ -909,6 +942,7 @@ export class RealityDialSystem extends createSystem({
 
     if (this.cloudGroup != null) {
       this.cloudGroup.visible = v > 0.001;
+      this.cloudGroup.position.set(this.anchor.x, 0, this.anchor.z);
     }
     if (this.gridMaterial != null) {
       this.gridMaterial.uniforms['uValue'].value = v;

@@ -176,6 +176,10 @@ dissolve membrane inward from the shell walls while the Cloud emerges behind it.
 At **Cloud (1)** the shell is gone and the Cloud is fully established at the same
 floor level and horizon.
 
+The shell, Cloud group and dial are re-anchored to the player's current head
+position, so starting or ending the transition after walking uses the new
+location instead of the original room center.
+
 Cloud environment:
 
 - **Gradient dome** — a large inverted sphere: dark violet at the top, deep blue
