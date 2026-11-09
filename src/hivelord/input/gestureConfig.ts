@@ -18,21 +18,32 @@ export const GESTURE_CONFIG = {
   // Pinch uses two thresholds for hysteresis: start below, release above.
   pinchStartM: 0.025,
   pinchEndM: 0.04,
+  // A closed fist can put thumb and index tips close together. Only allow a
+  // pinch when the index is not fully curled. Bend is 0 = straight, ~1 = fist.
+  pinchMaxIndexBend: 0.85,
 
-  // Fist: average fingertip-to-palm distance over the four fingers.
-  fistEnterCurl: 0.35,
-  fistExitCurl: 0.45,
+  // Fist: fingertip-to-palm distance over the four fingers, with a joint-bend
+  // fallback because Quest often reports a fist as only partly closed.
+  fistEnterCurl: 0.45,
+  fistExitCurl: 0.55,
+  fistMaxCurl: 0.7,
+  fistEnterBend: 0.55,
+  fistExitBend: 0.45,
 
   // Extended finger: tip-to-palm distance above this fraction of hand size.
   extendedEnterCurl: 0.7,
   extendedExitCurl: 0.62,
 
   // Cupped: palm normal points up and the fingers are partly curled.
-  cuppedEnterDot: 0.7,
-  cuppedExitDot: 0.6,
-  cuppedCurlMin: 0.4,
-  cuppedCurlMax: 0.65,
-  cuppedCurlSlack: 0.08,
+  // Bend is measured from the top two finger joints (Meta's curl feature).
+  cuppedEnterDot: 0.55,
+  cuppedExitDot: 0.45,
+  cuppedBendMin: 0.15,
+  cuppedBendMax: 0.95,
+  cuppedBendSlack: 0.1,
+  // Cupped fingers stay together; open palm requires spread.
+  cuppedMaxSpread: 1.15,
+  cuppedSpreadSlack: 0.1,
 
   // Flat palm: fingers extended, palm normal points at the aim direction.
   // The aim direction is head-forward until wall targeting arrives in Level 9.
@@ -45,13 +56,13 @@ export const GESTURE_CONFIG = {
   openSpreadExit: 0.85,
 
   // Two-palm stop: both palms face the aim direction, in front of the chest.
-  stopEnterDot: 0.7,
-  stopExitDot: 0.6,
-  stopMinForwardM: 0.3,
-  stopMaxForwardM: 0.6,
-  stopMinBelowHeadM: 0.15,
-  stopMaxBelowHeadM: 0.55,
-  stopMaxLateralM: 0.4,
+  stopEnterDot: 0.6,
+  stopExitDot: 0.5,
+  stopMinForwardM: 0.2,
+  stopMaxForwardM: 0.75,
+  stopMinBelowHeadM: 0.05,
+  stopMaxBelowHeadM: 0.7,
+  stopMaxLateralM: 0.6,
 
   // Guard against degenerate joint data.
   minHandSizeM: 0.02,

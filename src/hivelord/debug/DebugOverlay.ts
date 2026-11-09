@@ -275,7 +275,7 @@ export class DebugOverlaySystem extends createSystem({
       y + 22,
     );
     ctx.fillText(
-      `curl ${hand.curl[0].toFixed(2)} ${hand.curl[1].toFixed(2)} ${hand.curl[2].toFixed(2)} ${hand.curl[3].toFixed(2)} ${hand.curl[4].toFixed(2)}`,
+      `bend ${hand.bend[0].toFixed(2)} ${hand.bend[1].toFixed(2)} ${hand.bend[2].toFixed(2)} ${hand.bend[3].toFixed(2)} ${hand.bend[4].toFixed(2)}`,
       x,
       y + 42,
     );

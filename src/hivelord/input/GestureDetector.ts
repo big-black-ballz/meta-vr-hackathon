@@ -336,6 +336,7 @@ export class GestureDetector {
     }
 
     const averageCurl = hand.averageFingerCurl();
+    const averageBend = hand.averageFingerBend();
     const minCurl = hand.minFingerCurl();
     for (let i = 0; i < GESTURE_PRIORITY.length; i++) {
       const gesture = GESTURE_PRIORITY[i];
@@ -346,27 +347,36 @@ export class GestureDetector {
             return gesture;
           }
           break;
-        case 'fist':
+        case 'fist': {
+          const curlLimit = entering
+            ? GESTURE_CONFIG.fistEnterCurl
+            : GESTURE_CONFIG.fistExitCurl;
+          const bendLimit = entering
+            ? GESTURE_CONFIG.fistEnterBend
+            : GESTURE_CONFIG.fistExitBend;
           if (
-            averageCurl <
-            (entering
-              ? GESTURE_CONFIG.fistEnterCurl
-              : GESTURE_CONFIG.fistExitCurl)
+            averageCurl < curlLimit ||
+            (averageBend > bendLimit &&
+              averageCurl < GESTURE_CONFIG.fistMaxCurl)
           ) {
             return gesture;
           }
           break;
+        }
         case 'cupped': {
-          const slack = entering ? 0 : GESTURE_CONFIG.cuppedCurlSlack;
-          const min = GESTURE_CONFIG.cuppedCurlMin - slack;
-          const max = GESTURE_CONFIG.cuppedCurlMax + slack;
+          const bendSlack = entering ? 0 : GESTURE_CONFIG.cuppedBendSlack;
+          const spreadSlack = entering
+            ? 0
+            : GESTURE_CONFIG.cuppedSpreadSlack;
           if (
             hand.palmUpDot >
               (entering
                 ? GESTURE_CONFIG.cuppedEnterDot
                 : GESTURE_CONFIG.cuppedExitDot) &&
-            averageCurl >= min &&
-            averageCurl <= max
+            averageBend >= GESTURE_CONFIG.cuppedBendMin - bendSlack &&
+            averageBend <= GESTURE_CONFIG.cuppedBendMax + bendSlack &&
+            hand.spreadRatio <
+              GESTURE_CONFIG.cuppedMaxSpread + spreadSlack
           ) {
             return gesture;
           }
