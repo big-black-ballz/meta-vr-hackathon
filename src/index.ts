@@ -9,6 +9,7 @@ import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { HivelordGameSystem } from './hivelord/core/HivelordGameSystem.js';
 import { DebugOverlaySystem } from './hivelord/debug/DebugOverlay.js';
+import { HivelordInputSystem } from './hivelord/input/InputSystem.js';
 import { PanelSystem } from './panel.js';
 import { RealityDialSystem } from './reality-dial.js';
 import { RobotSystem } from './robot.js';
@@ -25,5 +26,6 @@ World.create(
   world.registerSystem(RoomScanSystem);
   world.registerSystem(ToySystem);
   world.registerSystem(HivelordGameSystem);
+  world.registerSystem(HivelordInputSystem);
   world.registerSystem(DebugOverlaySystem);
 });

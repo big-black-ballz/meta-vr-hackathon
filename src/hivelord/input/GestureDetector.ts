@@ -140,9 +140,7 @@ export class GestureDetector {
 
   setDominantHand(setting: DominantHandSetting): void {
     this.dominantSetting = setting;
-    if (setting !== 'auto') {
-      this.dominantHand = setting;
-    }
+    this.dominantHand = setting === 'auto' ? null : setting;
   }
 
   getPrimaryGesture(hand: HandId): GestureId | null {

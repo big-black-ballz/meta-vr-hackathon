@@ -19,13 +19,19 @@ import {
 } from '../core/config.js';
 import { gameState } from '../core/GameState.js';
 import { timeControl } from '../core/TimeControl.js';
+import type { GestureDetector } from '../input/GestureDetector.js';
+import type { HandState } from '../input/HandState.js';
+import { GESTURE_LABELS } from '../input/GestureMap.js';
+import { getGestureDetector } from '../input/InputSystem.js';
 
-const PANEL_WIDTH = 0.24;
-const PANEL_HEIGHT = 0.15;
+const PANEL_WIDTH = 0.4;
+const PANEL_HEIGHT = 0.3;
+const CANVAS_WIDTH = 640;
+const CANVAS_HEIGHT = 480;
 
 /**
- * Small camera-relative text panel. Redraws at most 4x/sec and uses one draw
- * call. Hidden entirely when DEBUG is false or the config flag is off.
+ * Camera-relative debug panel. Redraws at most 4x/sec and uses one draw call.
+ * Hidden entirely when DEBUG is false or the config flag is off.
  */
 export class DebugOverlaySystem extends createSystem({
   planes: { required: [XRPlane] },
@@ -52,8 +58,8 @@ export class DebugOverlaySystem extends createSystem({
       return;
     }
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 320;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
     if (ctx == null) {
       return;
@@ -124,9 +130,9 @@ export class DebugOverlaySystem extends createSystem({
     this.forward.set(0, 0, -1).applyQuaternion(this.quaternion);
     this.panel.position
       .copy(this.head)
-      .addScaledVector(this.right, -0.12)
-      .addScaledVector(this.forward, 0.65)
-      .addScaledVector(this.up, -0.1);
+      .addScaledVector(this.right, -0.06)
+      .addScaledVector(this.forward, 0.8)
+      .addScaledVector(this.up, -0.22);
     this.panel.quaternion.copy(this.quaternion);
   }
 
@@ -136,20 +142,13 @@ export class DebugOverlaySystem extends createSystem({
     if (ctx == null || texture == null) {
       return;
     }
+    const detector = getGestureDetector();
     const state = gameState.getState();
     const immersive =
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-    let left = false;
-    let right = false;
-    if (immersive) {
-      try {
-        left = this.input.xr.isPrimary('hand', 'left') === true;
-        right = this.input.xr.isPrimary('hand', 'right') === true;
-      } catch {
-        left = false;
-        right = false;
-      }
-    }
+    const leftTracked = detector?.left.tracked ?? false;
+    const rightTracked = detector?.right.tracked ?? false;
+    const bothLost = immersive && !leftTracked && !rightTracked;
     const planeCount = this.queries.planes.entities.size;
     const mode = immersive
       ? planeCount > 0
@@ -157,47 +156,141 @@ export class DebugOverlaySystem extends createSystem({
         : 'AR (fallback)'
       : 'Browser';
 
-    ctx.clearRect(0, 0, 512, 320);
-    ctx.fillStyle = 'rgba(7, 14, 26, 0.88)';
-    this.roundRect(ctx, 8, 8, 496, 304, 18);
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = 'rgba(7, 14, 26, 0.9)';
+    this.roundRect(ctx, 8, 8, 624, 464, 18);
     ctx.fill();
     ctx.strokeStyle = 'rgba(111, 230, 255, 0.5)';
     ctx.lineWidth = 2;
-    this.roundRect(ctx, 8, 8, 496, 304, 18);
+    this.roundRect(ctx, 8, 8, 624, 464, 18);
     ctx.stroke();
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(235, 250, 255, 0.98)';
     ctx.font = '700 24px system-ui, sans-serif';
-    ctx.fillText('HIVELORD  L0', 28, 38);
+    ctx.fillText('HIVELORD  L1', 28, 36);
     ctx.fillStyle = 'rgba(111, 230, 255, 0.9)';
     ctx.font = '600 16px system-ui, sans-serif';
-    ctx.fillText(`${this.fps.toFixed(0)} FPS   ${this.frameMs.toFixed(1)} ms`, 300, 38);
+    ctx.fillText(`${this.fps.toFixed(0)} FPS  ${this.frameMs.toFixed(1)} ms`, 420, 36);
 
-    const rows: Array<[string, string]> = [
-      ['state', state],
-      ['time scale', timeControl.timeScale.toFixed(2)],
-      ['game dt', `${(timeControl.deltaTime * 1000).toFixed(1)} ms`],
-      ['bots', '0'],
-      ['gesture', 'none'],
-      ['hands', `L ${left ? 'tracked' : 'off'}   R ${right ? 'tracked' : 'off'}`],
-      ['session', mode],
-    ];
-    ctx.font = '500 18px system-ui, sans-serif';
-    let y = 82;
-    for (const [label, value] of rows) {
-      ctx.fillStyle = 'rgba(160, 196, 216, 0.9)';
-      ctx.fillText(label, 28, y);
-      ctx.fillStyle = 'rgba(235, 250, 255, 0.98)';
-      ctx.fillText(value, 160, y);
-      y += 28;
+    ctx.font = '500 15px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(160, 196, 216, 0.9)';
+    ctx.fillText(
+      `${state}   scale ${timeControl.timeScale.toFixed(2)}   dt ${(
+        timeControl.deltaTime * 1000
+      ).toFixed(1)} ms   bots 0`,
+      28,
+      62,
+    );
+    ctx.fillStyle = 'rgba(235, 250, 255, 0.9)';
+    ctx.fillText(mode, 420, 62);
+
+    if (bothLost) {
+      ctx.fillStyle = 'rgba(255, 92, 92, 0.92)';
+      ctx.font = '700 16px system-ui, sans-serif';
+      ctx.fillText('HANDS LOST', 28, 84);
+    } else {
+      const dominant = detector?.getDominantHand() ?? null;
+      ctx.fillStyle = 'rgba(150, 170, 190, 0.8)';
+      ctx.font = '500 14px system-ui, sans-serif';
+      ctx.fillText(
+        `dominant ${dominant ?? 'auto'}   gesture key path: detection + debounce`,
+        28,
+        84,
+      );
     }
 
-    ctx.fillStyle = 'rgba(150, 170, 190, 0.65)';
-    ctx.font = '400 14px system-ui, sans-serif';
-    ctx.fillText('H hide   P pause', 28, 292);
+    this.drawHand(ctx, 28, 110, 'L', detector?.left, leftTracked, detector);
+    this.drawHand(ctx, 330, 110, 'R', detector?.right, rightTracked, detector);
+
+    ctx.fillStyle = 'rgba(111, 230, 255, 0.85)';
+    ctx.font = '700 14px system-ui, sans-serif';
+    ctx.fillText('LAST GESTURE EVENTS', 28, 286);
+    ctx.font = '500 13px system-ui, sans-serif';
+    const log = detector?.getEventLog();
+    if (log == null || log.length === 0) {
+      ctx.fillStyle = 'rgba(150, 170, 190, 0.7)';
+      ctx.fillText('no events yet', 28, 310);
+    } else {
+      ctx.fillStyle = 'rgba(220, 240, 250, 0.9)';
+      for (let i = 0; i < log.length; i++) {
+        ctx.fillText(log[i], 28, 310 + i * 21);
+      }
+    }
+
+    ctx.fillStyle = 'rgba(150, 170, 190, 0.7)';
+    ctx.font = '500 13px system-ui, sans-serif';
+    ctx.fillText(
+      '1 pinch  2 fist  3 flat palm  4 cupped  5 open palm  6 stop',
+      28,
+      428,
+    );
+    ctx.fillText(
+      '1-6 right hand   Shift+1-6 left hand   H hide   P pause',
+      28,
+      450,
+    );
     texture.needsUpdate = true;
+  }
+
+  private drawHand(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    tag: string,
+    hand: HandState | undefined,
+    tracked: boolean,
+    detector: GestureDetector | undefined,
+  ): void {
+    ctx.textAlign = 'left';
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillStyle = tracked
+      ? 'rgba(111, 230, 255, 0.95)'
+      : 'rgba(255, 150, 120, 0.9)';
+    const primary = hand == null ? null : detector?.getPrimaryGesture(hand.hand);
+    const hold = primary == null ? 0 : detector?.getHoldSeconds(primary, hand?.hand);
+    const gestureLabel =
+      primary == null ? 'none' : GESTURE_LABELS[primary].toUpperCase();
+    ctx.fillText(
+      `${tag}  ${tracked ? 'TRACKED' : 'OFF'}   ${gestureLabel}${
+        primary != null ? ` ${(hold ?? 0).toFixed(1)}s` : ''
+      }`,
+      x,
+      y,
+    );
+
+    if (hand == null) {
+      ctx.font = '500 13px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(150, 170, 190, 0.7)';
+      ctx.fillText('no hand data', x, y + 22);
+      return;
+    }
+
+    ctx.font = '500 13px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(220, 240, 250, 0.85)';
+    ctx.fillText(
+      `pinch ${(hand.pinchDistance * 1000).toFixed(1)} mm   spread ${hand.spreadRatio.toFixed(2)}`,
+      x,
+      y + 22,
+    );
+    ctx.fillText(
+      `curl ${hand.curl[0].toFixed(2)} ${hand.curl[1].toFixed(2)} ${hand.curl[2].toFixed(2)} ${hand.curl[3].toFixed(2)} ${hand.curl[4].toFixed(2)}`,
+      x,
+      y + 42,
+    );
+    ctx.fillText(
+      `normal up ${hand.palmUpDot.toFixed(2)}   fwd ${hand.palmForwardDot.toFixed(2)}`,
+      x,
+      y + 62,
+    );
+    ctx.fillStyle = 'rgba(150, 170, 190, 0.8)';
+    ctx.font = '500 12px system-ui, sans-serif';
+    ctx.fillText(
+      `state ${detector?.getGestureState(primary ?? 'pinch', hand.hand) ?? 'None'}`,
+      x,
+      y + 82,
+    );
   }
 
   private roundRect(
