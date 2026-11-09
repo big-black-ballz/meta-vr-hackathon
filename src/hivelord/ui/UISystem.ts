@@ -567,10 +567,12 @@ export class UISystem extends createSystem({
     const entry = this.entries.get('start');
     const screen = entry?.screen;
     if (screen instanceof StartScreen) {
+      // Begin stays enabled while loading so the press can park as
+      // pendingBegin; the label communicates the wait instead.
       if (isReady('chapter1')) {
         screen.setBeginState(STRINGS.startBegin, true);
       } else {
-        screen.setBeginState(STRINGS.startLoadingChapter, false);
+        screen.setBeginState(STRINGS.startLoadingChapter, true);
       }
     }
   }

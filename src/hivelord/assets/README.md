@@ -39,3 +39,24 @@ Boot drives the LoadingScreen; chapter1 preloads from the Start screen.
 Missing/corrupt/slow assets resolve to magenta-tinted procedural stand-ins
 and increment the `fallbacks: N` counter in the debug overlay. Production
 builds show neutral fallbacks with no warnings.
+
+## Failure simulation (dev builds)
+
+- `X` toggles the asset gallery (loaded models in a row with tri counts).
+- `Z` cycles fail-sim: off, missing, corrupt, timeout, slow.
+- `A` loads the lazy test group, `D` runs the unload round-trip,
+  `S` reloads boot, `F` tests on-demand voice audio.
+- A failing critical asset rejects its group and raises ErrorScreen.
+
+## Validator and budgets
+
+- `npm run check:assets` scans folders vs manifest (table above).
+- `npm run check:ui-colors` still covers UI.
+- Budgets live in `core/config.ts` (`ASSET_BUDGETS`): 100k scene tris,
+  150 draw calls, 128 MB texture memory, 30 MB download, 15k/model,
+  1024px/texture. Overruns warn in dev, naming the offender.
+- `getStats()` exposes loaded/bytes/fallbacks/group timings.
+- glTF-Transform is not installed. If Draco/Meshopt compression is wanted
+  later: `npm i -D @gltf-transform/cli` then
+  `gltf-transform optimize in.glb out.glb --compress draco` (draco needs the
+  local `public/decoders/draco/` path, already vendored). Awaiting approval.

@@ -19,6 +19,7 @@
     "reference:status": "iwsdk reference status",
     "reference:warmup": "iwsdk reference warmup",
     "typecheck": "tsc --noEmit",
+    "check:assets": "node scripts/check-assets.mjs",
     "check:ui-colors": "node scripts/check-ui-colors.mjs",
     "build": "vite build",
     "preview": "vite preview"

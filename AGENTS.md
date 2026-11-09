@@ -197,6 +197,12 @@ renderer imports; systems import the declarations, never the reverse.
   success). No hard-coded UI colors outside that file; run
   `npm run check:ui-colors`. World effects (bots, sky, dial, surface outlines)
   are separate and stay violet/gold accented.
+- **Assets**: every runtime asset goes through `assetUrl()` (sub-path safe)
+  and needs a manifest entry in `src/hivelord/assets/manifest.ts`. Never load
+  decoders from a CDN (`public/decoders/` is vendored). Reuse the SDK loaders
+  via `src/hivelord/assets/`; no second GLTF pipeline. Budgets live in
+  `ASSET_BUDGETS`; run `npm run check:assets`. Track license/author/source on
+  every entry; name files `category_name_variant.ext`.
 - Systems use queries, never manually tracked entity arrays.
 - Never allocate in `update()`. Allocate in `init()` as class properties.
 - Prefer `queries.x.subscribe('qualify', ...)` over polling state each frame.
