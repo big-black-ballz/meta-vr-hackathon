@@ -10,7 +10,9 @@ Every color lives in `theme.ts`. Components import tokens or `withAlpha()` /
 | Token | Hex | Use |
 | --- | --- | --- |
 | `base` | `#0A0908` | Backdrops, pre-session page |
-| `panel` | `#1A1612` | Panel fill at `panelOpacity` (default 0.88) |
+| `panel` | `#1A1612` | Panel fill base (legacy/compat) |
+| `panelTop` | `#1F1A14` | Panel gradient top |
+| `panelBottom` | `#14110D` | Panel gradient bottom |
 | `panelRaised` | `#231D16` | Default button/row fill |
 | `panelEdge` | `#3A3126` | Hairlines, meter tracks |
 | `primary` | `#F5C451` | Gold: interaction, values, progress, active |
@@ -49,8 +51,18 @@ accent 35% glow. Use `withAlpha(primary, 0.18)` etc., never duplicate hex.
 
 ## Notes
 
+- Panel chrome is drawn once per dirty redraw: vertical gradient, gold corner
+  brackets, 4% hex lattice watermark, top highlight, inner glow and hairline.
+  A shared 3D shadow plate sits 3 mm behind the focused panel; Start/Chapter
+  raise a crest plate 2.5 mm in front for parallax.
+- Hit meshes use a shared non-rendering material (`visible: false`) so they
+  are raycastable but cost no draw calls.
+- Settings is four tabs (Audio, Display, Hands, Comfort) with plate rows,
+  icon medallions, 10-pip volume bars, segmented chips and animated toggles.
 - Canvas textures are sRGB; UI materials set `toneMapped: false` and
-  `depthWrite: false` so gold matches the token.
-- Redraws are dirty-gated. HUD updates at most 10 Hz, debug overlay at 4 Hz.
+  `depthWrite: false` so gold matches the token. Panel renderOrder 10, shadow
+  1, ornament 12, hover sweep 13.
+- Redraws are dirty-gated. HUD updates at most 10 Hz, debug overlay at 4 Hz,
+  loading shimmer at 10 Hz.
 - World visuals (swarm bots, Cloud sky, surface outlines) are separate and
   should read these tokens only where a UI accent is intended.

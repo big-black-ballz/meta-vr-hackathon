@@ -4,13 +4,13 @@ import { CanvasPanel, UIScreen, UI_PPM } from './screen.js';
 import {
   controlAt,
   drawChrome,
-  drawChromeGlow,
   drawControl,
   makeControl,
   type Control,
 } from './controls.js';
+import { drawPanel, drawTitle } from './draw/panel.js';
 import { STRINGS } from './strings.js';
-import { THEME } from './theme.js';
+import { THEME, withAlpha } from './theme.js';
 
 const PANEL_W_M = 0.52;
 
@@ -49,19 +49,9 @@ export class StartScreen extends UIScreen {
 
   build(world: World): void {
     this.world = world;
-    const hM = panelHeightFor(4, 60);
+    const hM = panelHeightFor(4, 120);
     this.panel = new CanvasPanel(world, 'hivelord-ui-start', PANEL_W_M, hM);
-    const label = makeControl(
-      'subtitle',
-      'label',
-      48,
-      92,
-      this.panel.widthPx - 96,
-      40,
-      STRINGS.startSubtitle,
-    );
-    this.controls = [label];
-    layoutButtons(
+    this.controls = [];    layoutButtons(
       this.controls,
       ['begin', 'settings', 'skills', 'exit'],
       [
@@ -71,9 +61,15 @@ export class StartScreen extends UIScreen {
         STRINGS.startExit,
       ],
       this.panel.widthPx,
-      150,
+      166,
       28,
     );
+    for (const c of this.controls) {
+      if (c.kind === 'button') {
+        c.x = 80;
+        c.w = this.panel.widthPx - 160;
+      }
+    }
     const begin = this.controls.find((c) => c.id === 'begin');
     if (begin != null) {
       begin.variant = 'primary';
@@ -85,7 +81,18 @@ export class StartScreen extends UIScreen {
     if (this.panel == null) {
       return;
     }
-    drawChromeGlow(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.appTitle);
+    drawPanel(ctx, this.panel.widthPx, this.panel.heightPx);
+    drawTitle(
+      ctx,
+      this.panel.widthPx,
+      STRINGS.appTitle,
+      true,
+      88,
+      'none',
+      STRINGS.startSubtitle,
+      THEME.primary,
+      30,
+    );
     for (const c of this.controls) {
       drawControl(ctx, c);
     }
@@ -119,29 +126,38 @@ export class LoadingScreen extends UIScreen {
   controls: Control[] = [];
   private progress = 0;
   private label: string = STRINGS.loadingTitle;
+  private tipIndex = 0;
+  private tipTimer = 0;
+  private sweep = 0;
+  private shimmerAccum = 0;
+  private readonly tips = [STRINGS.loadingTip, STRINGS.loadingTip2, STRINGS.loadingTip3];
 
   build(world: World): void {
     this.panel = new CanvasPanel(world, 'hivelord-ui-loading', PANEL_W_M, 0.3);
-    const bar = makeControl(
-      'bar',
-      'progress',
-      48,
-      170,
-      this.panel.widthPx - 96,
-      36,
-    );
-    bar.progress = 0;
-    this.controls = [bar];
   }
 
   setProgress(p: number, label: string): void {
-    this.progress = Math.max(0, Math.min(1, p));
-    this.label = label;
-    const bar = this.controls[0];
-    if (bar != null) {
-      bar.progress = this.progress;
+    const next = Math.max(0, Math.min(1, p));
+    if (Math.abs(next - this.progress) > 0.004 || label !== this.label) {
+      this.progress = next;
+      this.label = label;
+      this.panel?.setDirty();
     }
-    this.panel?.setDirty();
+  }
+
+  update(dt: number): void {
+    this.sweep += dt;
+    this.shimmerAccum += dt;
+    this.tipTimer += dt;
+    if (this.tipTimer >= 2.5) {
+      this.tipTimer = 0;
+      this.tipIndex = (this.tipIndex + 1) % this.tips.length;
+      this.panel?.setDirty();
+    }
+    if (this.shimmerAccum >= 0.1) {
+      this.shimmerAccum = 0;
+      this.panel?.setDirty();
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -152,20 +168,36 @@ export class LoadingScreen extends UIScreen {
     ctx.textAlign = 'center';
     ctx.fillStyle = THEME.textMuted;
     ctx.font = `500 ${THEME.smallPx}px ${THEME.fontFamily}`;
-    ctx.fillText(
-      STRINGS.loadingTip,
-      this.panel.widthPx / 2,
-      128,
-    );
-    for (const c of this.controls) {
-      drawControl(ctx, c);
-    }
+    ctx.fillText(this.tips[this.tipIndex] ?? '', this.panel.widthPx / 2, 128);
+    const x = 64;
+    const y = 170;
+    const w = this.panel.widthPx - 128;
+    const h = 34;
+    ctx.fillStyle = THEME.panelEdge;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, h / 2);
+    ctx.fill();
+    const fill = Math.max(h, w * this.progress);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, fill, h, h / 2);
+    ctx.clip();
+    const grad = ctx.createLinearGradient(x, y, x + fill, y);
+    grad.addColorStop(0, THEME.primary);
+    grad.addColorStop(1, withAlpha(THEME.primary, 0.75));
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, fill, h);
+    const sweepX = x + ((this.sweep * 0.35) % 1) * fill;
+    const sweepGrad = ctx.createLinearGradient(sweepX - 60, y, sweepX + 60, y);
+    sweepGrad.addColorStop(0, withAlpha(THEME.text, 0));
+    sweepGrad.addColorStop(0.5, withAlpha(THEME.text, 0.45));
+    sweepGrad.addColorStop(1, withAlpha(THEME.text, 0));
+    ctx.fillStyle = sweepGrad;
+    ctx.fillRect(sweepX - 60, y, 120, h);
+    ctx.restore();
     ctx.fillStyle = THEME.primary;
-    ctx.fillText(
-      `${Math.round(this.progress * 100)}%`,
-      this.panel.widthPx / 2,
-      240,
-    );
+    ctx.font = `600 ${THEME.smallPx}px ${THEME.fontFamily}`;
+    ctx.fillText(`${Math.round(this.progress * 100)}%`, this.panel.widthPx / 2, 240);
   }
 
   onControl(_controlId: string): void {}

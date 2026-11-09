@@ -13,6 +13,7 @@ import {
   drawLock,
   drawWarnTriangle,
   drawX,
+  hexPath,
 } from './draw/icons.js';
 import { roundRectPath } from './draw/panel.js';
 import { settings } from './settings.js';
@@ -453,14 +454,25 @@ export class HUD {
       const total = this.cooldownTotal[i] ?? 8;
       const left = this.cooldownLeft[i] ?? 0;
       const cooling = left > 0;
-      if (i === this.activeAbility && !cooling) {
+      const accent = i === this.activeAbility && !cooling;
+      hexPath(ctx, cx, cy, r - 3);
+      const inner = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+      inner.addColorStop(0, withAlpha(accent ? THEME.accent : THEME.primary, 0.22));
+      inner.addColorStop(1, withAlpha(accent ? THEME.accent : THEME.primary, 0.02));
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = inner;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+      if (accent) {
         ctx.save();
         ctx.shadowColor = withAlpha(THEME.accent, 0.35);
         ctx.shadowBlur = 14;
         drawHex(ctx, cx, cy, r, THEME.accent, null, 3);
         ctx.restore();
       } else {
-        drawHex(ctx, cx, cy, r, THEME.primary, null, 2);
+        drawHex(ctx, cx, cy, r, withAlpha(THEME.primary, 0.9), null, 2);
+        drawHex(ctx, cx, cy, r - 6, withAlpha(THEME.primary, 0.25), null, 1);
       }
       if (cooling) {
         const p = total > 0 ? 1 - left / total : 1;

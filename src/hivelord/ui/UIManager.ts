@@ -73,7 +73,6 @@ export class UIManager {
       hivelordEvents.emit('UIClosed', { screen: top });
     }
     this.stack.push(id);
-    screen.onShow(data);
     screen.show();
     hivelordEvents.emit('UIOpened', { screen: id });
     this.refreshContext();

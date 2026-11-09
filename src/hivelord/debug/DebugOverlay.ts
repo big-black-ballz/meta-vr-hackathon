@@ -105,7 +105,10 @@ export class DebugOverlaySystem extends createSystem({
     if (this.input.keyboard?.getKeyDown(DEBUG_OVERLAY_KEY) === true) {
       this.visible = !this.visible;
     }
-    const shown = this.visible && settings.get('debugOverlay');
+    const shown =
+      this.visible &&
+      settings.get('debugOverlay') &&
+      getUIState().screen === 'none';
     this.panel.visible = shown;
 
     if (!shown) {

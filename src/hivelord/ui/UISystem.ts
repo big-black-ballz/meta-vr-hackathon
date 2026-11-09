@@ -27,13 +27,14 @@ import {
   ConfirmScreen,
   ErrorScreen,
   PauseScreen,
-  SettingsScreen,
-  SkillsScreen,
 } from './screens-system.js';
+import { SettingsScreen } from './settingsScreen.js';
+import { SkillsScreen } from './skillsScreen.js';
 import { HUD } from './hud.js';
 import { WristMenu } from './wrist.js';
 import { GalleryScreen } from './gallery.js';
 import { runContrastCheck } from './contrast.js';
+import { OrnamentPlate, ShadowPlate, HoverSweep, type OrnamentKind } from './draw/depth.js';
 import { settings } from './settings.js';
 import { setMasterVolume, uiSounds } from './sounds.js';
 import { setHighContrast, setPanelOpacity, THEME } from './theme.js';
@@ -104,6 +105,15 @@ export class UISystem extends createSystem({
   private bannerPauseHeld = false;
   private prevFocus: ScreenId | null = null;
   private welcomePanel: UIKitMLAsset | null = null;
+  private welcomeDocument: { visible: boolean } | null = null;
+  private welcomeObject: { visible: boolean } | null = null;
+  private shadowPlate: ShadowPlate | null = null;
+  private ornamentPlate: OrnamentPlate | null = null;
+  private hoverSweep: HoverSweep | null = null;
+  private hoveredControl: Control | null = null;
+  private animT = 1;
+  private animActive = false;
+  private readonly animBase = new Vector3();
 
   init(): void {
     settings.load();
@@ -159,7 +169,10 @@ export class UISystem extends createSystem({
         screen.panel?.widthPx ?? 640,
         screen.panel?.heightPx ?? 480,
         controlsOf(),
-        () => screen.panel?.setDirty(),
+        (control, hover) => {
+          screen.panel?.setDirty();
+          this.hoverChanged(screen.id, control, hover);
+        },
       );
       this.entries.set(screen.id, { screen, hits, controlsOf });
     }
@@ -167,6 +180,16 @@ export class UISystem extends createSystem({
     this.hud.build(world);
     this.wrist.build(world, () => undefined);
     this.welcomePanel = world.getSceneObject<UIKitMLAsset>('welcome-panel') ?? null;
+    this.welcomeDocument =
+      (this.welcomePanel?.document as unknown as { visible: boolean } | undefined) ??
+      null;
+    this.welcomeObject =
+      (world.scene.getObjectByName('Welcome Panel') as
+        | { visible: boolean }
+        | undefined) ?? null;
+    this.shadowPlate = new ShadowPlate(world);
+    this.ornamentPlate = new OrnamentPlate(world);
+    this.hoverSweep = new HoverSweep(world);
 
     this.cleanupFuncs.push(
       this.queries.hits.subscribe('qualify', (entity) => {
@@ -252,8 +275,11 @@ export class UISystem extends createSystem({
     this.hud.markDirty();
   }
 
-  private placeFocusedScreen(): void {    const focus = this.manager.focus();
+  private placeFocusedScreen(): void {
+    const focus = this.manager.focus();
     if (focus == null) {
+      this.shadowPlate?.hide();
+      this.ornamentPlate?.hide();
       return;
     }
     const entry = this.entries.get(focus);
@@ -272,10 +298,153 @@ export class UISystem extends createSystem({
     );
     panel.mesh.updateWorldMatrix(true, false);
     layoutHitMeshes(entry.hits, panel.mesh, true);
+    this.updateDepthLayers(entry);
     for (const other of this.entries.values()) {
       if (other !== entry) {
         layoutHitMeshes(other.hits, panel.mesh, false);
       }
+    }
+  }
+
+  private setWelcomeVisible(visible: boolean): void {
+    if (this.welcomePanel != null) {
+      this.welcomePanel.visible = visible;
+    }
+    if (this.welcomeDocument != null) {
+      this.welcomeDocument.visible = visible;
+    }
+    if (this.welcomeObject != null) {
+      this.welcomeObject.visible = visible;
+    }
+  }
+
+  private updateDepthLayers(entry: ScreenEntry): void {
+    const panel = entry.screen.panel;
+    if (panel == null || this.shadowPlate == null || this.ornamentPlate == null) {
+      return;
+    }
+    this.shadowPlate.setPose(
+      panel.mesh.position,
+      panel.mesh.quaternion,
+      panel.widthM,
+      panel.heightM,
+    );
+    if (entry.screen.id === 'start') {
+      this.ornamentPlate.setKind('crest');
+      this.ornamentPlate.setPose(
+        panel.mesh.position,
+        panel.mesh.quaternion,
+        panel.widthM,
+        panel.heightM,
+        true,
+      );
+      return;
+    }
+    if (entry.screen.id === 'chapter') {
+      this.ornamentPlate.setKind('crown');
+      this.ornamentPlate.setPose(
+        panel.mesh.position,
+        panel.mesh.quaternion,
+        panel.widthM,
+        panel.heightM,
+        true,
+      );
+      return;
+    }
+    this.ornamentPlate.hide();
+  }
+
+  private ornamentFor(id: ScreenId): OrnamentKind {
+    switch (id) {
+      case 'start':
+        return 'crest';
+      case 'chapter':
+        return 'crown';
+      case 'pause':
+        return 'pause';
+      case 'error':
+        return 'warning';
+      default:
+        return 'hex';
+    }
+  }
+
+  private hoverChanged(
+    screenId: ScreenId,
+    control: Control,
+    hover: boolean,
+  ): void {
+    if (!hover) {
+      if (this.hoveredControl === control) {
+        this.hoveredControl = null;
+        this.hoverSweep?.hide();
+      }
+      return;
+    }
+    if (settings.get('reduceFlashing') || this.manager.focus() !== screenId) {
+      return;
+    }
+    const entry = this.entries.get(screenId);
+    const panel = entry?.screen.panel;
+    if (entry == null || panel == null) {
+      return;
+    }
+    this.hoveredControl = control;
+    this.hoverSweep?.start(
+      panel.mesh,
+      control,
+      panel.widthPx,
+      panel.heightPx,
+    );
+  }
+
+  private startEntrance(entry: ScreenEntry): void {
+    const panel = entry.screen.panel;
+    if (panel == null) {
+      return;
+    }
+    if (settings.get('reduceFlashing')) {
+      panel.mesh.scale.set(1, 1, 1);
+      panel.setOpacity(1);
+      this.animActive = false;
+      return;
+    }
+    this.animT = 0;
+    this.animActive = true;
+    this.animBase.copy(panel.mesh.position);
+    panel.mesh.scale.set(0.96, 0.96, 0.96);
+    panel.setOpacity(0.2);
+  }
+
+  private updateEntrance(dt: number): void {
+    if (!this.animActive) {
+      return;
+    }
+    const focus = this.manager.focus();
+    const entry = focus != null ? this.entries.get(focus) : undefined;
+    const panel = entry?.screen.panel;
+    if (entry == null || panel == null) {
+      this.animActive = false;
+      return;
+    }
+    this.animT = Math.min(1, this.animT + dt / 0.18);
+    const eased = 1 - Math.pow(1 - this.animT, 3);
+    const scale = 0.96 + 0.04 * eased;
+    panel.mesh.scale.set(scale, scale, scale);
+    panel.mesh.position.copy(this.animBase);
+    panel.mesh.position.y += 0.006 * (1 - eased);
+    panel.setOpacity(eased);
+    panel.mesh.updateWorldMatrix(true, false);
+    layoutHitMeshes(entry.hits, panel.mesh, true);
+    this.updateDepthLayers(entry);
+    if (this.animT >= 1) {
+      panel.mesh.scale.set(1, 1, 1);
+      panel.mesh.position.copy(this.animBase);
+      panel.setOpacity(1);
+      panel.mesh.updateWorldMatrix(true, false);
+      layoutHitMeshes(entry.hits, panel.mesh, true);
+      this.updateDepthLayers(entry);
+      this.animActive = false;
     }
   }
 
@@ -307,7 +476,7 @@ export class UISystem extends createSystem({
       return;
     }
     const control = entry.controlsOf().find((c) => c.id === controlId);
-    if (control == null || !control.enabled) {
+    if (control == null || !control.enabled || control.hidden) {
       return;
     }
     this.setCooldown(screenId, controlId);
@@ -316,6 +485,10 @@ export class UISystem extends createSystem({
     hivelordEvents.emit('ButtonPressed', { id: controlId, screen: screenId });
     uiSounds.press();
     this.activateScreen(screenId as ScreenId, controlId);
+    if (screen.panel != null) {
+      screen.panel.mesh.updateWorldMatrix(true, false);
+      layoutHitMeshes(entry.hits, screen.panel.mesh, true);
+    }
     screen.panel?.setDirty();
   }
 
@@ -574,6 +747,9 @@ export class UISystem extends createSystem({
     if (down('KeyG')) {
       this.manager.show('gallery');
     }
+    if (down('KeyZ')) {
+      this.manager.show('loading');
+    }
     if (down('KeyV')) {
       runContrastCheck();
     }
@@ -616,7 +792,11 @@ export class UISystem extends createSystem({
           .filter(
             (c) =>
               c.enabled &&
-              (c.kind === 'button' || c.kind === 'toggle' || c.kind === 'hit'),
+              !c.hidden &&
+              (c.kind === 'button' ||
+                c.kind === 'toggle' ||
+                c.kind === 'tab' ||
+                c.kind === 'hit'),
           );
       }
     }
@@ -655,17 +835,13 @@ export class UISystem extends createSystem({
       world.visibilityState.peek() !== VisibilityState.NonImmersive;
     if (immersive && !this.wasImmersive) {
       hidePresession();
-      if (this.welcomePanel != null) {
-        this.welcomePanel.visible = false;
-      }
+      this.setWelcomeVisible(false);
       // The head pose changes when the immersive session starts; re-place the
       // focused screen so it is not left at the browser camera pose.
       this.placeFocusedScreen();
     }
     if (!immersive && this.wasImmersive) {
-      if (this.welcomePanel != null) {
-        this.welcomePanel.visible = true;
-      }
+      this.setWelcomeVisible(true);
       if (
         gameState.getState() === GameStates.Playing ||
         gameState.getState() === GameStates.Paused
@@ -693,7 +869,34 @@ export class UISystem extends createSystem({
       this.prevFocus = focus;
       if (focus != null) {
         this.placeFocusedScreen();
+        const entry = this.entries.get(focus);
+        if (entry != null) {
+          this.startEntrance(entry);
+        }
+      } else {
+        this.shadowPlate?.hide();
+        this.ornamentPlate?.hide();
+        this.hoverSweep?.hide();
       }
+    }
+    this.updateEntrance(delta);
+    this.hoverSweep?.update(delta);
+    if (this.ornamentPlate != null) {
+      const focusNow = this.manager.focus();
+      if (focusNow === 'start') {
+        const pulse =
+          settings.get('reduceFlashing')
+            ? 1
+            : 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(this.uiTime * 1.4));
+        this.ornamentPlate.setOpacity(pulse);
+      } else {
+        this.ornamentPlate.setOpacity(1);
+      }
+    }
+    if (this.welcomePanel != null || this.welcomeObject != null) {
+      this.setWelcomeVisible(
+        !immersive && focus == null && gameState.getState() === GameStates.Boot,
+      );
     }
 
     if (focus === 'loading') {

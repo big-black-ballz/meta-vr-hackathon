@@ -49,12 +49,14 @@ export function buildHitMeshes(
     transparent: true,
     opacity: 0,
     depthWrite: false,
+    visible: false,
   });
   for (const control of controls) {
     if (
       control.kind !== 'button' &&
       control.kind !== 'toggle' &&
-      control.kind !== 'hit'
+      control.kind !== 'hit' &&
+      control.kind !== 'tab'
     ) {
       continue;
     }
@@ -113,9 +115,10 @@ export function layoutHitMeshes(
 ): void {
   panel.updateWorldMatrix(true, false);
   for (const record of records) {
-    record.visible = visible;
-    record.mesh.visible = visible;
-    if (!visible) {
+    const active = visible && !record.control.hidden;
+    record.visible = active;
+    record.mesh.visible = active;
+    if (!active) {
       continue;
     }
     tmpV.set(record.localX, record.localY, 0.004).applyMatrix4(panel.matrixWorld);

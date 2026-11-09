@@ -19,17 +19,21 @@ interface Pair {
  */
 export function runContrastCheck(): { failures: number; lines: string[] } {
   const backdrop = CONTRAST_BACKDROP;
-  const panelBg = blendOver(THEME.panel, THEME.panelOpacity, backdrop);
+  const panelTopBg = blendOver(THEME.panelTop, THEME.panelOpacity, backdrop);
+  const panelBottomBg = blendOver(THEME.panelBottom, THEME.panelOpacity, backdrop);
   const raisedBg = blendOver(THEME.panelRaised, 1, backdrop);
   const pairs: Pair[] = [
-    { label: 'text/panel', fg: THEME.text, bg: panelBg, sizePx: 30 },
-    { label: 'textMuted/panel', fg: THEME.textMuted, bg: panelBg, sizePx: 30 },
-    { label: 'textFaint/panel', fg: THEME.textFaint, bg: panelBg, sizePx: 24 },
-    { label: 'primary/panel', fg: THEME.primary, bg: panelBg, sizePx: 46 },
-    { label: 'accentText/panel', fg: THEME.accentText, bg: panelBg, sizePx: 24 },
-    { label: 'warning/panel', fg: THEME.warning, bg: panelBg, sizePx: 32 },
-    { label: 'success/panel', fg: THEME.success, bg: panelBg, sizePx: 24 },
-    { label: 'danger/panel', fg: THEME.danger, bg: panelBg, sizePx: 24 },
+    { label: 'text/panelTop', fg: THEME.text, bg: panelTopBg, sizePx: 30 },
+    { label: 'text/panelBottom', fg: THEME.text, bg: panelBottomBg, sizePx: 30 },
+    { label: 'textMuted/panelTop', fg: THEME.textMuted, bg: panelTopBg, sizePx: 30 },
+    { label: 'textMuted/panelBottom', fg: THEME.textMuted, bg: panelBottomBg, sizePx: 30 },
+    { label: 'textFaint/panelTop', fg: THEME.textFaint, bg: panelTopBg, sizePx: 24 },
+    { label: 'textFaint/panelBottom', fg: THEME.textFaint, bg: panelBottomBg, sizePx: 24 },
+    { label: 'primary/panelTop', fg: THEME.primary, bg: panelTopBg, sizePx: 46 },
+    { label: 'accentText/panelTop', fg: THEME.accentText, bg: panelTopBg, sizePx: 24 },
+    { label: 'warning/panelTop', fg: THEME.warning, bg: panelTopBg, sizePx: 32 },
+    { label: 'success/panelTop', fg: THEME.success, bg: panelTopBg, sizePx: 24 },
+    { label: 'danger/panelTop', fg: THEME.danger, bg: panelTopBg, sizePx: 24 },
     { label: 'textOnPrimary/primary', fg: THEME.textOnPrimary, bg: THEME.primary, sizePx: 32 },
     { label: 'text/panelRaised', fg: THEME.text, bg: raisedBg, sizePx: 30 },
     { label: 'textMuted/panelRaised', fg: THEME.textMuted, bg: raisedBg, sizePx: 30 },

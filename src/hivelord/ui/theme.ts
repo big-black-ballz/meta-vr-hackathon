@@ -17,6 +17,8 @@ export const CONTRAST_BACKDROP = '#808080';
 export interface ThemeTokens {
   base: string;
   panel: string;
+  panelTop: string;
+  panelBottom: string;
   panelRaised: string;
   panelEdge: string;
   primary: string;
@@ -49,6 +51,8 @@ export interface ThemeTokens {
 const BASE_TOKENS: ThemeTokens = {
   base: '#0A0908',
   panel: '#1A1612',
+  panelTop: '#1F1A14',
+  panelBottom: '#14110D',
   panelRaised: '#231D16',
   panelEdge: '#3A3126',
   primary: '#F5C451',
@@ -172,6 +176,8 @@ export function contrastRatio(fg: string, bg: string): number {
 const CSS_VARS: Array<[string, keyof ThemeTokens]> = [
   ['--hiv-base', 'base'],
   ['--hiv-panel', 'panel'],
+  ['--hiv-panel-top', 'panelTop'],
+  ['--hiv-panel-bottom', 'panelBottom'],
   ['--hiv-panel-raised', 'panelRaised'],
   ['--hiv-panel-edge', 'panelEdge'],
   ['--hiv-primary', 'primary'],

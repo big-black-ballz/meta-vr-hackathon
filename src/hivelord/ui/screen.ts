@@ -27,8 +27,11 @@ export const UI_PPM = 1230;
  */
 export class CanvasPanel {
   readonly mesh: Mesh;
+  readonly material: MeshBasicMaterial;
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
+  readonly widthM: number;
+  readonly heightM: number;
   private readonly texture: CanvasTexture;
   private dirty = true;
 
@@ -38,6 +41,8 @@ export class CanvasPanel {
     widthM: number,
     heightM: number,
   ) {
+    this.widthM = widthM;
+    this.heightM = heightM;
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(widthM * UI_PPM);
     canvas.height = Math.round(heightM * UI_PPM);
@@ -55,9 +60,11 @@ export class CanvasPanel {
       depthWrite: false,
       toneMapped: false,
     });
+    this.material = material;
     this.mesh = new Mesh(new PlaneGeometry(widthM, heightM), material);
     this.mesh.name = name;
     this.mesh.visible = false;
+    this.mesh.renderOrder = 10;
     world.createTransformEntity(this.mesh);
   }
 
@@ -75,6 +82,10 @@ export class CanvasPanel {
 
   setVisible(visible: boolean): void {
     this.mesh.visible = visible;
+  }
+
+  setOpacity(opacity: number): void {
+    this.material.opacity = Math.max(0, Math.min(1, opacity));
   }
 
   render(draw: (ctx: CanvasRenderingContext2D) => void): void {
