@@ -24,11 +24,11 @@ export const GESTURE_CONFIG = {
 
   // Fist: fingertip-to-palm distance over the four fingers, with a joint-bend
   // fallback because Quest often reports a fist as only partly closed.
-  fistEnterCurl: 0.45,
-  fistExitCurl: 0.55,
-  fistMaxCurl: 0.7,
-  fistEnterBend: 0.55,
-  fistExitBend: 0.45,
+  fistEnterCurl: 0.55,
+  fistExitCurl: 0.65,
+  fistMaxCurl: 0.75,
+  fistEnterBend: 0.7,
+  fistExitBend: 0.55,
 
   // Extended finger: tip-to-palm distance above this fraction of hand size.
   extendedEnterCurl: 0.7,

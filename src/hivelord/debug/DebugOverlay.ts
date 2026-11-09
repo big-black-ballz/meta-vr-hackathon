@@ -275,21 +275,26 @@ export class DebugOverlaySystem extends createSystem({
       y + 22,
     );
     ctx.fillText(
-      `bend ${hand.bend[0].toFixed(2)} ${hand.bend[1].toFixed(2)} ${hand.bend[2].toFixed(2)} ${hand.bend[3].toFixed(2)} ${hand.bend[4].toFixed(2)}`,
+      `curl ${hand.curl[0].toFixed(2)} ${hand.curl[1].toFixed(2)} ${hand.curl[2].toFixed(2)} ${hand.curl[3].toFixed(2)} ${hand.curl[4].toFixed(2)}`,
       x,
       y + 42,
     );
     ctx.fillText(
-      `normal up ${hand.palmUpDot.toFixed(2)}   fwd ${hand.palmForwardDot.toFixed(2)}`,
+      `bend ${hand.bend[0].toFixed(2)} ${hand.bend[1].toFixed(2)} ${hand.bend[2].toFixed(2)} ${hand.bend[3].toFixed(2)} ${hand.bend[4].toFixed(2)}`,
       x,
       y + 62,
+    );
+    ctx.fillText(
+      `normal up ${hand.palmUpDot.toFixed(2)}   fwd ${hand.palmForwardDot.toFixed(2)}`,
+      x,
+      y + 82,
     );
     ctx.fillStyle = 'rgba(150, 170, 190, 0.8)';
     ctx.font = '500 12px system-ui, sans-serif';
     ctx.fillText(
       `state ${detector?.getGestureState(primary ?? 'pinch', hand.hand) ?? 'None'}`,
       x,
-      y + 82,
+      y + 102,
     );
   }
 
