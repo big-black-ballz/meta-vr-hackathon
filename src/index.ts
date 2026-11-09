@@ -10,6 +10,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { PanelSystem } from './panel.js';
 import { RealityDialSystem } from './reality-dial.js';
 import { RobotSystem } from './robot.js';
+import { RoomScanSystem } from './room-scan.js';
 import { ToySystem } from './toys.js';
 
 World.create(
@@ -19,5 +20,6 @@ World.create(
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(RealityDialSystem);
+  world.registerSystem(RoomScanSystem);
   world.registerSystem(ToySystem);
 });

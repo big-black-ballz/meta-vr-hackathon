@@ -180,6 +180,19 @@ The shell, Cloud group and dial are re-anchored to the player's current head
 position, so starting or ending the transition after walking uses the new
 location instead of the original room center.
 
+## Room scan
+
+Entering XR automatically starts a 12-second guided room scan. It asks the
+platform for room capture when available, shows instructions and a progress bar,
+and reports the detected `XRPlane` surfaces. Detected labels in the emulator
+include `floor`, `couch`, `table`, `wall`, `window` and `wall art`; the scan
+counts 16 usable surfaces and logs them once per second. `S` restarts the scan on
+desktop, or re-enter XR to scan again. No surfaces found is a calm state, not an
+error.
+
+Detected planes become the static toy colliders described below. Bed/couch/sofa
+labels are soft; tables, floors and walls are hard.
+
 ## Physics toys
 
 `world.features.physics` is on at 60 Hz with worker execution. Detected

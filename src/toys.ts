@@ -65,6 +65,9 @@ interface SurfaceRecord {
   width: number;
   height: number;
   thickness: number;
+  boxDimensions: Vector3;
+  localNormal: Vector3;
+  heightAxis: 'y' | 'z';
   soft: boolean;
   label: string;
   source: 'plane' | 'virtual' | 'tray';
@@ -323,21 +326,27 @@ export class ToySystem extends createSystem({
           }
         | undefined;
       const planeObject = planeEntity.object3D;
-      if (native == null || !(planeObject instanceof Mesh)) {
+      if (native == null || planeObject == null) {
+        continue;
+      }
+      const geometry = (planeObject as Mesh).geometry;
+      if (geometry == null) {
         continue;
       }
       const label = (native.semanticLabel ?? '').toLowerCase();
       if (label === 'ceiling') {
         continue;
       }
-      const geometry = planeObject.geometry;
       geometry.computeBoundingBox();
       const box = geometry.boundingBox;
       if (box == null) {
         continue;
       }
       const size = box.getSize(new Vector3());
-      if (size.x < MIN_PLANE_SIZE || size.y < MIN_PLANE_SIZE) {
+      const flatOnY = size.y < 0.01 && size.z > 0.01;
+      const width = size.x;
+      const height = flatOnY ? size.z : size.y;
+      if (width < MIN_PLANE_SIZE || height < MIN_PLANE_SIZE) {
         continue;
       }
       seen.add(planeEntity);
@@ -346,13 +355,19 @@ export class ToySystem extends createSystem({
         .getCenter(new Vector3())
         .applyMatrix4(planeObject.matrixWorld);
       const quaternion = planeObject.getWorldQuaternion(new Quaternion());
-      const normal = new Vector3(0, 0, 1).applyQuaternion(quaternion);
+      const localNormal = flatOnY
+        ? new Vector3(0, 1, 0)
+        : new Vector3(0, 0, 1);
+      const normal = localNormal.clone().applyQuaternion(quaternion);
       if (native.orientation === 'horizontal' && normal.y < 0) {
         quaternion.multiply(
           new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI),
         );
         normal.negate();
       }
+      const boxDimensions: [number, number, number] = flatOnY
+        ? [width, SURFACE_THICKNESS, height]
+        : [width, height, SURFACE_THICKNESS];
       const soft = /bed|couch|sofa|mattress|soft/.test(label);
       const surfaceLabel =
         label ||
@@ -364,8 +379,8 @@ export class ToySystem extends createSystem({
       const existing = this.planeSurfaces.get(planeEntity);
       if (
         existing != null &&
-        Math.abs(existing.width - size.x) < 0.05 &&
-        Math.abs(existing.height - size.y) < 0.05
+        Math.abs(existing.width - width) < 0.05 &&
+        Math.abs(existing.height - height) < 0.05
       ) {
         this.setSurfacePose(
           existing,
@@ -384,9 +399,12 @@ export class ToySystem extends createSystem({
         center: worldCenter,
         quaternion,
         normal,
-        width: size.x,
-        height: size.y,
+        width,
+        height,
         thickness: SURFACE_THICKNESS,
+        boxDimensions,
+        localNormal,
+        heightAxis: flatOnY ? 'z' : 'y',
         soft,
         label: surfaceLabel,
         source: 'plane',
@@ -434,16 +452,26 @@ export class ToySystem extends createSystem({
     width: number;
     height: number;
     thickness: number;
+    boxDimensions?: [number, number, number];
+    localNormal?: Vector3;
+    heightAxis?: 'y' | 'z';
     soft: boolean;
     label: string;
     source: 'plane' | 'virtual' | 'tray';
     visible: boolean;
     color?: number;
   }): SurfaceRecord | null {
+    const boxDimensions: [number, number, number] =
+      options.boxDimensions ?? [
+        options.width,
+        options.height,
+        options.thickness,
+      ];
+    const localNormal = options.localNormal ?? new Vector3(0, 0, 1);
     const geometry = new BoxGeometry(
-      options.width,
-      options.height,
-      options.thickness,
+      boxDimensions[0],
+      boxDimensions[1],
+      boxDimensions[2],
     );
     const material = options.visible
       ? new MeshStandardMaterial({
@@ -471,14 +499,18 @@ export class ToySystem extends createSystem({
     entity.addComponent(PhysicsBody, { state: PhysicsState.Static });
     entity.addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Box,
-      dimensions: [options.width, options.height, options.thickness],
+      dimensions: boxDimensions,
       density: 1,
       friction: options.soft ? 0.9 : 0.7,
       restitution: options.soft ? 0.04 : 0.25,
     });
 
     const outlineGeometry = new EdgesGeometry(
-      new BoxGeometry(options.width, options.height, options.thickness),
+      new BoxGeometry(
+        boxDimensions[0],
+        boxDimensions[1],
+        boxDimensions[2],
+      ),
     );
     const outlineMaterial = new LineBasicMaterial({
       color: new Color(0x6fe6ff),
@@ -510,6 +542,13 @@ export class ToySystem extends createSystem({
       width: options.width,
       height: options.height,
       thickness: options.thickness,
+      boxDimensions: new Vector3(
+        boxDimensions[0],
+        boxDimensions[1],
+        boxDimensions[2],
+      ),
+      localNormal: localNormal.clone(),
+      heightAxis: options.heightAxis ?? 'y',
       soft: options.soft,
       label: options.label,
       source: options.source,
@@ -1194,7 +1233,7 @@ export class ToySystem extends createSystem({
     let bestTop = new Vector3();
     for (const surface of this.surfaces) {
       const normal = this.tmpA
-        .set(0, 0, 1)
+        .copy(surface.localNormal)
         .applyQuaternion(surface.quaternion);
       if (normal.y < 0.5) {
         continue;
@@ -1207,9 +1246,11 @@ export class ToySystem extends createSystem({
       }
       this.tmpQInv.copy(surface.quaternion).invert();
       this.tmpC.copy(position).sub(top).applyQuaternion(this.tmpQInv);
+      const heightCoord =
+        surface.heightAxis === 'z' ? this.tmpC.z : this.tmpC.y;
       if (
         Math.abs(this.tmpC.x) <= surface.width / 2 + 0.05 &&
-        Math.abs(this.tmpC.y) <= surface.height / 2 + 0.05
+        Math.abs(heightCoord) <= surface.height / 2 + 0.05
       ) {
         best = surface;
         bestY = top.y;
@@ -1329,10 +1370,13 @@ export class ToySystem extends createSystem({
           .copy(record.mesh.position)
           .sub(surface.center)
           .applyQuaternion(this.tmpQInv.copy(surface.quaternion).invert());
+        const heightCoord =
+          surface.heightAxis === 'z' ? this.tmpC.z : this.tmpC.y;
+        const normalCoord = this.tmpC.dot(surface.localNormal);
         if (
           Math.abs(this.tmpC.x) <= surface.width / 2 + 0.2 &&
-          Math.abs(this.tmpC.y) <= surface.height / 2 + 0.2 &&
-          Math.abs(this.tmpC.z) <= surface.thickness / 2 + 0.35
+          Math.abs(heightCoord) <= surface.height / 2 + 0.2 &&
+          Math.abs(normalCoord) <= surface.thickness / 2 + 0.35
         ) {
           holdsToy = true;
           break;
@@ -1454,17 +1498,30 @@ export class ToySystem extends createSystem({
       return;
     }
     this.logTimer = 0;
+    const raw: string[] = [];
+    for (const entity of this.queries.planes.entities) {
+      const plane = entity.getValue(XRPlane, '_plane') as
+        | { orientation?: string; semanticLabel?: string }
+        | undefined;
+      const object = entity.object3D as Mesh | undefined;
+      const geometry = object?.geometry;
+      geometry?.computeBoundingBox();
+      const size = geometry?.boundingBox?.getSize(new Vector3());
+      raw.push(
+        `${plane?.semanticLabel ?? plane?.orientation ?? 'plane'}:${size ? `${size.x.toFixed(2)}x${size.y.toFixed(2)}` : '?'}`,
+      );
+    }
     const parts = [...this.planeSurfaces.values()]
       .map(
         (s) =>
           `${s.label}:${s.width.toFixed(2)}x${s.height.toFixed(2)}${s.soft ? ':soft' : ''}`,
       )
       .sort();
-    const signature = `${parts.length}|${parts.join(',')}`;
+    const signature = `${raw.length}|${raw.sort().join(',')}|${parts.length}|${parts.join(',')}`;
     if (signature !== this.lastPlaneSignature) {
       this.lastPlaneSignature = signature;
       console.info(
-        `[Toys] surfaces=${parts.length} ${parts.join(' | ') || 'none (virtual fallback)'}`,
+        `[Toys] rawPlanes=${raw.length} ${raw.join(' | ') || 'none'} -> surfaces=${parts.length} ${parts.join(' | ') || 'none (virtual fallback)'}`,
       );
     }
   }
