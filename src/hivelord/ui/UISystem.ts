@@ -454,12 +454,31 @@ export class UISystem extends createSystem({
       return;
     }
     const down = (code: string): boolean => keyboard.getKeyDown(code) === true;
-    if (down('KeyB')) {
-      this.pressPrimary();
-    }
-    for (let i = 0; i < 9; i++) {
-      if (down(`Digit${i + 1}`)) {
-        this.pressNth(i);
+    // Digits drive the focused blocking screen only. With no blocking
+    // screen they belong to the Level 1 forced-gesture keys (gameplay),
+    // so the wrist menu uses F1-F5 to avoid stealing gameplay input.
+    const focus = this.manager.focus();
+    if (focus != null) {
+      if (down('KeyB')) {
+        this.pressPrimary();
+      }
+      for (let i = 0; i < 9; i++) {
+        if (down(`Digit${i + 1}`)) {
+          this.pressNth(i);
+        }
+      }
+    } else {
+      if (down('KeyB')) {
+        this.pressPrimary();
+      }
+      const wristKeys = ['F1', 'F2', 'F3', 'F4', 'F5'];
+      for (let i = 0; i < wristKeys.length; i++) {
+        if (down(wristKeys[i] ?? '')) {
+          const control = this.wrist.controls[i];
+          if (control != null && this.wrist.open) {
+            this.activateControl('wrist', control.id);
+          }
+        }
       }
     }
     if (down('KeyQ')) {
@@ -550,7 +569,7 @@ export class UISystem extends createSystem({
 
   private pressPrimary(): void {
     const list = this.actionableControls();
-    const first = list[0];
+    const first = list.find((c) => c.hover) ?? list[0];
     if (first == null) {
       return;
     }

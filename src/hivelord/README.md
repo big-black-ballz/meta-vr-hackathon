@@ -21,3 +21,12 @@ Level 1: hand joint reading, six gestures (pinch, fist, flat palm, cupped,
 open palm, two-palm stop), frame debounce and hysteresis, conflict priority,
 dominant-hand setting, tracking-loss grace, forced-gesture dev keys and an
 extended debug overlay. No swarm, abilities, UI menus or enemies yet.
+
+Level 3: hands-only UI layer under `ui/`. Custom canvas-texture world-space
+screens (start, loading, pause, settings, skills, chapter-complete, confirm,
+error), non-blocking HUD (ability bar, charge ring, stun meter, objective
+hint, toasts, subtitles, tracking banner), non-dominant wrist menu, settings
+store (localStorage; this repo has no memory system), procedural UI tones (no
+sound system in repo), input-context switching (blocking screens suspend
+gameplay gestures), Level 2-lite placement helpers and a DOM pre-session
+page. Placeholders only for unbuilt gameplay systems.
