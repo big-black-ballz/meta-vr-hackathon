@@ -358,12 +358,16 @@ export class GestureDetector {
           const dotLimit = entering
             ? GESTURE_CONFIG.fistEnterDot
             : GESTURE_CONFIG.fistExitDot;
+          const palmUpLimit = entering
+            ? GESTURE_CONFIG.fistMaxPalmUpEnter
+            : GESTURE_CONFIG.fistMaxPalmUpExit;
           if (
-            averageTip < tipLimit ||
-            (averageBend > bendLimit &&
-              averageTip < GESTURE_CONFIG.fistTipMaxM) ||
-            (averageDot > dotLimit &&
-              averageTip < GESTURE_CONFIG.fistTipMaxM)
+            hand.palmUpDot < palmUpLimit &&
+            (averageTip < tipLimit ||
+              (averageBend > bendLimit &&
+                averageTip < GESTURE_CONFIG.fistTipMaxM) ||
+              (averageDot > dotLimit &&
+                averageTip < GESTURE_CONFIG.fistTipMaxM))
           ) {
             return gesture;
           }

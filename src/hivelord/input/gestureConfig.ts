@@ -39,7 +39,9 @@ export const GESTURE_CONFIG = {
 
   // Fist: all four fingertips near their knuckles (primary), confirmed by
   // joint bend and tip-into-palm orientation (secondary, OR-ed generously so
-  // a partially-tracked Quest fist still counts).
+  // a partially-tracked Quest fist still counts). Excludes palm-up hands so
+  // a deep cup reads as cupped, not fist: palm orientation disambiguates
+  // Gather (fist) from Scout (cupped).
   fistTipEnterM: 0.055,
   fistTipExitM: 0.065,
   fistTipMaxM: 0.075,
@@ -47,6 +49,8 @@ export const GESTURE_CONFIG = {
   fistExitBend: 0.5,
   fistEnterDot: 0.45,
   fistExitDot: 0.35,
+  fistMaxPalmUpEnter: 0.7,
+  fistMaxPalmUpExit: 0.8,
 
   // Extended finger: tip far from its knuckle AND fairly straight. Both must
   // hold so a splayed but bent hand is not "extended".
@@ -56,19 +60,17 @@ export const GESTURE_CONFIG = {
   extendedDotMax: 0.45,
 
   // Cupped: palm up, fingers half-curled, fingers together. Bend is the
-  // primary shape signal; tip distance keeps it out of fist/open territory.
+  // primary shape signal; the tip window is deliberately wide (a shallow
+  // bowl reads 95-125 mm, a deep bowl 70-85 mm) because bend + palm-up do
+  // the real separation from open (straight) and fist (palm not up).
   cuppedEnterDot: 0.5,
   cuppedExitDot: 0.4,
   cuppedBendMin: 0.2,
   cuppedBendMax: 1.0,
   cuppedBendSlack: 0.12,
-  cuppedTipMinM: 0.03,
-  cuppedTipMaxM: 0.085,
-  // Measured open-hand spread on the synthetic skeleton is ~2.6 (small
-  // wrist-to-MCP normaliser); a cupped hand with fingers together reads much
-  // lower, but keep the ceiling generous so spread never vetoes a cupped
-  // hand. Bend + palm-up are the real separators (cupped outranks open).
-  cuppedMaxSpread: 1.7,
+  cuppedTipMinM: 0.02,
+  cuppedTipMaxM: 0.125,
+  cuppedMaxSpread: 2.0,
   cuppedSpreadSlack: 0.15,
 
   // Flat palm: fingers extended, palm normal points at the aim direction.
