@@ -117,6 +117,14 @@ export class HivelordInputSystem extends createSystem({}) {
       const head = this.world.player.head;
       this.headPosition.copy(head.position);
       this.headForward.set(0, 0, -1).applyQuaternion(head.quaternion);
+      // Project to the horizontal plane: palm-facing-forward should not depend
+      // on whether the player happens to be looking down at their hands.
+      this.headForward.y = 0;
+      if (this.headForward.lengthSq() < 1e-6) {
+        this.headForward.set(0, 0, -1);
+      } else {
+        this.headForward.normalize();
+      }
       return;
     }
     const camera = this.world.camera;

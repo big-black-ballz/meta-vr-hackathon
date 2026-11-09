@@ -106,6 +106,31 @@ export class HandState {
   spreadRatio = 0;
   tracked = false;
 
+  /**
+   * Per-finger (index, middle, ring, pinky) tip-to-knuckle distance in metres.
+   * The WebXR hand-input explainer detects a fist this way: every fingertip
+   * close to its own metacarpal. Absolute metres are stable on Quest, which
+   * returns the same hand geometry for all users (spec privacy mitigation).
+   */
+  readonly tipMcp: number[] = [0, 0, 0, 0];
+
+  /**
+   * Per-finger extension ratio: tip-to-knuckle distance divided by that
+   * finger's own bone length (sum of its segment lengths). 1 is straight,
+   * roughly 0.3 is a full fist. Self-normalising, so it survives wrist-flex
+   * changes that corrupt wrist-based hand size.
+   */
+  readonly ext: number[] = [0, 0, 0, 0];
+
+  /**
+   * Per-finger orientation dot: tip -Z (points along the fingertip, away from
+   * the wrist) dotted with knuckle -Y (points out of the palm). Near 1 when
+   * the finger is curled into the palm (spec explainer's checkOrientation),
+   * near 0 when extended. From joint orientations, so it is immune to the
+   * position cross-product handedness bug.
+   */
+  readonly fistDot: number[] = [0, 0, 0, 0];
+
   private inputSource: XRInputSource | undefined;
   private readonly jointSpaces: (XRJointSpace | undefined)[] = [];
   private readonly spaces: XRJointSpace[] = [];
@@ -115,6 +140,9 @@ export class HandState {
   private readonly tmpA = new Vector3();
   private readonly bendA = new Vector3();
   private readonly bendB = new Vector3();
+  private readonly axisX = new Vector3();
+  private readonly axisY = new Vector3();
+  private readonly axisZ = new Vector3();
 
   constructor(hand: HandId) {
     this.hand = hand;
@@ -225,6 +253,11 @@ export class HandState {
       this.curl[i] = 0;
       this.bend[i] = 0;
     }
+    for (let i = 0; i < 4; i++) {
+      this.tipMcp[i] = 0;
+      this.ext[i] = 0;
+      this.fistDot[i] = 0;
+    }
   }
 
   private readJointPositions(): void {
@@ -257,10 +290,24 @@ export class HandState {
     this.palmCenter.multiplyScalar(0.2);
 
     this.palmForward.copy(middleMcp).sub(wrist).normalize();
-    this.tmpA.copy(this.joints[PINKY_MCP]).sub(this.joints[INDEX_MCP]);
-    this.palmNormal.copy(this.tmpA).cross(this.palmForward).normalize();
-    if (this.hand === 'left') {
-      this.palmNormal.negate();
+
+    // Palm normal from the middle-knuckle joint orientation, not from a
+    // position cross product. Per the WebXR hand-input spec every joint space
+    // has -Y pointing out of the palm and -Z along the bone away from the
+    // wrist, for both hands, so no per-hand sign flip is needed. The old
+    // cross-product version pointed at the back of the hand (dorsal) on both
+    // hands, which is why cupped and stop never fired on Quest.
+    this.readJointAxes(MIDDLE_MCP, this.axisX, this.axisY, this.axisZ);
+    this.palmNormal.copy(this.axisY).negate();
+    if (this.palmNormal.lengthSq() < 1e-6) {
+      // Orientation unavailable; fall back to the position cross product.
+      this.tmpA.copy(this.joints[INDEX_MCP]).sub(this.joints[PINKY_MCP]);
+      this.palmNormal.copy(this.tmpA).cross(this.palmForward).normalize();
+      if (this.hand === 'left') {
+        this.palmNormal.negate();
+      }
+    } else {
+      this.palmNormal.normalize();
     }
 
     for (let i = 0; i < CURL_TIP_INDICES.length; i++) {
@@ -283,12 +330,24 @@ export class HandState {
     this.palmForwardDot = this.palmNormal.dot(headForward);
 
     this.computeBend();
+    this.computeFingerMetrics();
 
+    // Pinch needs thumb+index tips together AND the other fingers not all
+    // curled, otherwise a fist (thumb across fingers) misfires as a pinch.
+    // Meta's own guidance: thumb-to-index is the reliable signal; accuracy
+    // degrades toward the pinky, so gate on the middle/ring/pinky state.
     const rawPinch = this.pinchActive
       ? this.pinchDistance < GESTURE_CONFIG.pinchEndM
       : this.pinchDistance < GESTURE_CONFIG.pinchStartM;
+    const othersBend =
+      (this.bend[2] + this.bend[3] + this.bend[4]) / 3;
+    const othersOpen =
+      (this.ext[1] + this.ext[2] + this.ext[3]) / 3;
     this.pinchActive =
-      rawPinch && this.bend[1] < GESTURE_CONFIG.pinchMaxIndexBend;
+      rawPinch &&
+      this.bend[1] < GESTURE_CONFIG.pinchMaxIndexBend &&
+      (othersBend < GESTURE_CONFIG.pinchMaxOthersBend ||
+        othersOpen > GESTURE_CONFIG.pinchMinOthersExt);
     const pinchRange =
       GESTURE_CONFIG.pinchEndM - GESTURE_CONFIG.pinchStartM;
     this.pinchConfidence = Math.max(
@@ -298,8 +357,7 @@ export class HandState {
   }
 
   /** Meta-style curl: bend at the top two joints, ignoring the knuckle. */
-  private computeBend(): void {
-    this.bend[0] =
+  private computeBend(): void {    this.bend[0] =
       (this.bendAt(THUMB_METACARPAL, THUMB_PROXIMAL, THUMB_DISTAL) +
         this.bendAt(THUMB_PROXIMAL, THUMB_DISTAL, THUMB_TIP)) /
       Math.PI;
@@ -335,6 +393,74 @@ export class HandState {
     return Math.acos(cosine);
   }
 
+  /** Reads the X/Y/Z axes of a joint's orientation matrix (column-major). */
+  private readJointAxes(
+    joint: number,
+    outX: Vector3,
+    outY: Vector3,
+    outZ: Vector3,
+  ): void {
+    const o = joint * 16;
+    outX.set(
+      this.transforms[o + 0],
+      this.transforms[o + 1],
+      this.transforms[o + 2],
+    );
+    outY.set(
+      this.transforms[o + 4],
+      this.transforms[o + 5],
+      this.transforms[o + 6],
+    );
+    outZ.set(
+      this.transforms[o + 8],
+      this.transforms[o + 9],
+      this.transforms[o + 10],
+    );
+  }
+
+  /**
+   * Tip-to-knuckle distance, bone-normalised extension and the orientation
+   * fist dot for index/middle/ring/pinky.
+   */
+  private computeFingerMetrics(): void {
+    const mcp = [INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP];
+    const prox = [INDEX_PROXIMAL, MIDDLE_PROXIMAL, RING_PROXIMAL, PINKY_PROXIMAL];
+    const inter = [
+      INDEX_INTERMEDIATE,
+      MIDDLE_INTERMEDIATE,
+      RING_INTERMEDIATE,
+      PINKY_INTERMEDIATE,
+    ];
+    const distal = [INDEX_DISTAL, MIDDLE_DISTAL, RING_DISTAL, PINKY_DISTAL];
+    const tip = [INDEX_TIP, MIDDLE_TIP, RING_TIP, PINKY_TIP];
+    for (let f = 0; f < 4; f++) {
+      const tipPos = this.joints[tip[f]];
+      const mcpPos = this.joints[mcp[f]];
+      this.tipMcp[f] = tipPos.distanceTo(mcpPos);
+
+      const bone =
+        this.joints[prox[f]].distanceTo(mcpPos) +
+        this.joints[inter[f]].distanceTo(this.joints[prox[f]]) +
+        this.joints[distal[f]].distanceTo(this.joints[inter[f]]) +
+        tipPos.distanceTo(this.joints[distal[f]]);
+      this.ext[f] = bone > 1e-6 ? this.tipMcp[f] / bone : 0;
+
+      // Tip -Z dotted with knuckle -Y (spec explainer checkOrientation).
+      this.readJointAxes(tip[f], this.bendA, this.axisY, this.axisZ);
+      this.readJointAxes(mcp[f], this.axisX, this.bendB, this.tmpA);
+      const tipLen = this.axisZ.length();
+      const palmLen = this.bendB.length();
+      if (tipLen < 1e-6 || palmLen < 1e-6) {
+        this.fistDot[f] = 0;
+        continue;
+      }
+      // axisZ is +Z; -Z is negated. bendB holds +Y; -Y is negated.
+      // (-tipZ) . (-palmY) == tipZ . palmY.
+      this.fistDot[f] =
+        (this.axisZ.dot(this.bendB) / (tipLen * palmLen));
+    }
+  }
+
   /** Average curl of index, middle, ring and pinky (0 = palm, ~1 = open). */
   averageFingerCurl(): number {
     let sum = 0;
@@ -350,6 +476,36 @@ export class HandState {
       sum += this.bend[i + 1];
     }
     return sum / FINGER_COUNT;
+  }
+
+  averageTipMcp(): number {
+    return (
+      (this.tipMcp[0] + this.tipMcp[1] + this.tipMcp[2] + this.tipMcp[3]) / 4
+    );
+  }
+
+  averageExt(): number {
+    return (this.ext[0] + this.ext[1] + this.ext[2] + this.ext[3]) / 4;
+  }
+
+  averageFistDot(): number {
+    return (
+      (this.fistDot[0] +
+        this.fistDot[1] +
+        this.fistDot[2] +
+        this.fistDot[3]) /
+      4
+    );
+  }
+
+  minExt(): number {
+    let min = this.ext[0];
+    for (let i = 1; i < 4; i++) {
+      if (this.ext[i] < min) {
+        min = this.ext[i];
+      }
+    }
+    return min;
   }
 
   minFingerCurl(): number {

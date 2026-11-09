@@ -335,9 +335,10 @@ export class GestureDetector {
       return null;
     }
 
-    const averageCurl = hand.averageFingerCurl();
     const averageBend = hand.averageFingerBend();
-    const minCurl = hand.minFingerCurl();
+    const averageTip = hand.averageTipMcp();
+    const averageDot = hand.averageFistDot();
+    const minExt = hand.minExt();
     for (let i = 0; i < GESTURE_PRIORITY.length; i++) {
       const gesture = GESTURE_PRIORITY[i];
       const entering = current !== gesture;
@@ -348,16 +349,21 @@ export class GestureDetector {
           }
           break;
         case 'fist': {
-          const curlLimit = entering
-            ? GESTURE_CONFIG.fistEnterCurl
-            : GESTURE_CONFIG.fistExitCurl;
+          const tipLimit = entering
+            ? GESTURE_CONFIG.fistTipEnterM
+            : GESTURE_CONFIG.fistTipExitM;
           const bendLimit = entering
             ? GESTURE_CONFIG.fistEnterBend
             : GESTURE_CONFIG.fistExitBend;
+          const dotLimit = entering
+            ? GESTURE_CONFIG.fistEnterDot
+            : GESTURE_CONFIG.fistExitDot;
           if (
-            averageCurl < curlLimit ||
+            averageTip < tipLimit ||
             (averageBend > bendLimit &&
-              averageCurl < GESTURE_CONFIG.fistMaxCurl)
+              averageTip < GESTURE_CONFIG.fistTipMaxM) ||
+            (averageDot > dotLimit &&
+              averageTip < GESTURE_CONFIG.fistTipMaxM)
           ) {
             return gesture;
           }
@@ -375,6 +381,8 @@ export class GestureDetector {
                 : GESTURE_CONFIG.cuppedExitDot) &&
             averageBend >= GESTURE_CONFIG.cuppedBendMin - bendSlack &&
             averageBend <= GESTURE_CONFIG.cuppedBendMax + bendSlack &&
+            averageTip >= GESTURE_CONFIG.cuppedTipMinM &&
+            averageTip <= GESTURE_CONFIG.cuppedTipMaxM &&
             hand.spreadRatio <
               GESTURE_CONFIG.cuppedMaxSpread + spreadSlack
           ) {
@@ -384,10 +392,13 @@ export class GestureDetector {
         }
         case 'flatPalm':
           if (
-            minCurl >
+            minExt > 0.62 &&
+            hand.tipMcp[0] >
               (entering
-                ? GESTURE_CONFIG.extendedEnterCurl
-                : GESTURE_CONFIG.extendedExitCurl) &&
+                ? GESTURE_CONFIG.extendedTipEnterM
+                : GESTURE_CONFIG.extendedTipExitM) &&
+            averageBend < GESTURE_CONFIG.extendedBendMax &&
+            averageDot < GESTURE_CONFIG.extendedDotMax &&
             hand.palmForwardDot >
               (entering
                 ? GESTURE_CONFIG.flatEnterDot
@@ -398,10 +409,13 @@ export class GestureDetector {
           break;
         case 'openPalm':
           if (
-            minCurl >
+            minExt > 0.62 &&
+            hand.tipMcp[0] >
               (entering
-                ? GESTURE_CONFIG.extendedEnterCurl
-                : GESTURE_CONFIG.extendedExitCurl) &&
+                ? GESTURE_CONFIG.extendedTipEnterM
+                : GESTURE_CONFIG.extendedTipExitM) &&
+            averageBend < GESTURE_CONFIG.extendedBendMax &&
+            averageDot < GESTURE_CONFIG.extendedDotMax &&
             hand.spreadRatio >
               (entering
                 ? GESTURE_CONFIG.openSpreadEnter
@@ -422,7 +436,7 @@ export class GestureDetector {
       case 'pinch':
         return hand.pinchConfidence;
       case 'fist':
-        return clamp01(1 - hand.averageFingerCurl() / 0.6);
+        return clamp01(1 - hand.averageTipMcp() / 0.08);
       case 'cupped':
         return clamp01(hand.palmUpDot);
       case 'flatPalm':

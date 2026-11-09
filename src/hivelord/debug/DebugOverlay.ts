@@ -275,12 +275,12 @@ export class DebugOverlaySystem extends createSystem({
       y + 22,
     );
     ctx.fillText(
-      `curl ${hand.curl[0].toFixed(2)} ${hand.curl[1].toFixed(2)} ${hand.curl[2].toFixed(2)} ${hand.curl[3].toFixed(2)} ${hand.curl[4].toFixed(2)}`,
+      `tip ${Math.round(hand.tipMcp[0] * 1000)} ${Math.round(hand.tipMcp[1] * 1000)} ${Math.round(hand.tipMcp[2] * 1000)} ${Math.round(hand.tipMcp[3] * 1000)} mm`,
       x,
       y + 42,
     );
     ctx.fillText(
-      `bend ${hand.bend[0].toFixed(2)} ${hand.bend[1].toFixed(2)} ${hand.bend[2].toFixed(2)} ${hand.bend[3].toFixed(2)} ${hand.bend[4].toFixed(2)}`,
+      `bend ${hand.bend[1].toFixed(2)} ${hand.bend[2].toFixed(2)} ${hand.bend[3].toFixed(2)} ${hand.bend[4].toFixed(2)}`,
       x,
       y + 62,
     );
