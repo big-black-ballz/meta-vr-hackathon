@@ -38,3 +38,17 @@ export const QUALITY_EFFECTS: Record<string, number> = {
   medium: 1,
   high: 2,
 };
+
+// Asset pipeline budgets (Level 4). Warnings only; nothing auto-scales yet.
+export const ASSET_BUDGETS = {
+  sceneTriangles: 100000,
+  drawCalls: 150,
+  textureMemoryMB: 128,
+  downloadMB: 30,
+  perModelTriangles: 15000,
+  perTextureMax: 1024,
+};
+export const ASSET_CONCURRENCY = 4;
+export const ASSET_TIMEOUT_MS = 15000;
+export const ASSET_RETRIES = 2;
+export const ASSET_FRAME_BUDGET_MS = 8;

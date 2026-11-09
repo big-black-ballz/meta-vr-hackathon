@@ -19,6 +19,7 @@ import {
 } from '../core/config.js';
 import { gameState } from '../core/GameState.js';
 import { timeControl } from '../core/TimeControl.js';
+import { getStats } from '../assets/AssetManager.js';
 import { settings } from '../ui/settings.js';
 import { getUIState } from '../ui/UISystem.js';
 import type { GestureDetector } from '../input/GestureDetector.js';
@@ -199,11 +200,17 @@ export class DebugOverlaySystem extends createSystem({
     } else {
       const dominant = detector?.getDominantHand() ?? null;
       const ui = getUIState();
+      const assets = getStats();
       ctx.fillStyle = 'rgba(150, 170, 190, 0.8)';
       ctx.font = '500 14px system-ui, sans-serif';
       ctx.fillText(
         `dominant ${dominant ?? 'auto'}   ui ${ui.screen}   ctx ${ui.context}`,
         28,
+        84,
+      );
+      ctx.fillText(
+        `assets ${assets.loadedAssets}   ${(assets.bytesLoaded / 1024).toFixed(0)}KB   fb:${assets.fallbacksUsed}`,
+        330,
         84,
       );
     }

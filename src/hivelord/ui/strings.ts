@@ -22,6 +22,7 @@ export const STRINGS = {
     'Hivelord is a hands-only VR game. Open this link on a Meta Quest 3 browser to play. You can look around in virtual mode from here.',
 
   startBegin: 'Begin',
+  startLoadingChapter: 'Loading chapter...',
   startSettings: 'Settings',
   startSkills: 'Skills',
   startExit: 'Exit',

@@ -98,12 +98,21 @@ export class StartScreen extends UIScreen {
     }
   }
 
+  /** Begin label/enabled for chapter1 preload gating (UISystem owns the flow). */
+  setBeginState(label: string, enabled: boolean): void {
+    const begin = this.controls.find((c) => c.id === 'begin');
+    if (begin != null && (begin.text !== label || begin.enabled !== enabled)) {
+      begin.text = label;
+      begin.enabled = enabled;
+      this.panel?.setDirty();
+    }
+  }
+
   onControl(controlId: string): void {
     switch (controlId) {
       case 'begin':
         gameState.setState('Playing', 'start begin');
-        break;
-      case 'settings':
+        break;      case 'settings':
       case 'skills':
         // Pushed by the UI system via UIManager; identifier only.
         break;

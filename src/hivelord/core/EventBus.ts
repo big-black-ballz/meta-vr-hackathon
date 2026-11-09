@@ -39,6 +39,10 @@ export interface HivelordEventMap {
     text: string;
     durationSeconds?: number;
   };
+  AssetProgress: { group: string; loaded: number; total: number };
+  AssetGroupLoaded: { group: string; ms: number; failed: number };
+  AssetFailed: { id: string; group: string; reason: string; critical: boolean };
+  AssetFallbackUsed: { id: string; kind: string };
 }
 
 type Handler<T> = (payload: T) => void;

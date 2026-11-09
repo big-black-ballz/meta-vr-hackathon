@@ -34,6 +34,7 @@ import { HUD } from './hud.js';
 import { WristMenu } from './wrist.js';
 import { GalleryScreen } from './gallery.js';
 import { runContrastCheck } from './contrast.js';
+import { isReady } from '../assets/AssetManager.js';
 import { OrnamentPlate, ShadowPlate, HoverSweep, type OrnamentKind } from './draw/depth.js';
 import { settings } from './settings.js';
 import { setMasterVolume, uiSounds } from './sounds.js';
@@ -99,6 +100,8 @@ export class UISystem extends createSystem({
   private wrist = new WristMenu();
   private uiTime = 0;
   private loadT = 0;
+  private bootProgress = 0;
+  private pendingBegin = false;
   private wasImmersive = false;
   private wasBlurred = false;
   private fakeTrackingLost = false;
@@ -199,15 +202,39 @@ export class UISystem extends createSystem({
       }),
       gameState.onEnter(GameStates.Boot, () => {
         this.loadT = 0;
+        this.bootProgress = 0;
         this.manager.show('loading');
       }),
-      gameState.onEnter(GameStates.Menu, () => this.manager.show('start')),
+      gameState.onEnter(GameStates.Menu, () => {
+        this.pendingBegin = false;
+        this.manager.show('start');
+        this.syncBeginButton();
+      }),
       gameState.onEnter(GameStates.Playing, () => this.manager.hideAll()),
       gameState.onEnter(GameStates.Paused, () => this.manager.show('pause')),
       gameState.onEnter(GameStates.ChapterEnd, () => this.manager.show('chapter')),
       gameState.onEnter(GameStates.Error, () => this.manager.show('error')),
       hivelordEvents.on('TrackingLost', () => this.refreshTrackingBanner()),
       hivelordEvents.on('TrackingRestored', () => this.refreshTrackingBanner()),
+      hivelordEvents.on('AssetProgress', ({ group, loaded, total }) => {
+        if (group === 'boot' && total > 0) {
+          this.bootProgress = Math.max(0, Math.min(1, loaded / total));
+        }
+      }),
+      hivelordEvents.on('AssetGroupLoaded', ({ group }) => {
+        if (group !== 'chapter1') {
+          return;
+        }
+        this.syncBeginButton();
+        if (
+          this.pendingBegin &&
+          gameState.getState() === GameStates.Menu &&
+          isReady('chapter1')
+        ) {
+          this.pendingBegin = false;
+          gameState.setState(GameStates.Playing, 'chapter ready');
+        }
+      }),
       hivelordEvents.on('SettingChanged', ({ key, value }) => {
         if (key === 'dominantHand' && typeof value === 'string') {
           getGestureDetector()?.setDominantHand(
@@ -536,9 +563,33 @@ export class UISystem extends createSystem({
     }
   }
 
+  private syncBeginButton(): void {
+    const entry = this.entries.get('start');
+    const screen = entry?.screen;
+    if (screen instanceof StartScreen) {
+      if (isReady('chapter1')) {
+        screen.setBeginState(STRINGS.startBegin, true);
+      } else {
+        screen.setBeginState(STRINGS.startLoadingChapter, false);
+      }
+    }
+  }
+
   private activateScreen(screenId: ScreenId, controlId: string): void {
     const entry = this.entries.get(screenId);
     if (entry == null) {
+      return;
+    }
+    if (screenId === 'start' && controlId === 'begin' && !isReady('chapter1')) {
+      this.pendingBegin = true;
+      const screen = entry.screen;
+      if (screen instanceof StartScreen) {
+        screen.setBeginState(STRINGS.startLoadingChapter, false);
+      }
+      hivelordEvents.emit('ToastRequested', {
+        text: STRINGS.startLoadingChapter,
+        kind: 'info',
+      });
       return;
     }
     switch (controlId) {
@@ -904,9 +955,9 @@ export class UISystem extends createSystem({
       const entry = this.entries.get('loading');
       const screen = entry?.screen;
       if (screen instanceof LoadingScreen) {
-        screen.setProgress(Math.min(1, this.loadT / 1.5), STRINGS.loadingTitle);
+        screen.setProgress(this.bootProgress, STRINGS.loadingTitle);
       }
-      if (this.loadT >= 1.5) {
+      if (this.loadT >= 1.5 && isReady('boot')) {
         gameState.setState(GameStates.Menu, 'loading complete');
       }
     }

@@ -10,6 +10,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { HivelordGameSystem } from './hivelord/core/HivelordGameSystem.js';
 import { DebugOverlaySystem } from './hivelord/debug/DebugOverlay.js';
 import { HivelordInputSystem } from './hivelord/input/InputSystem.js';
+import { AssetSystem } from './hivelord/assets/AssetSystem.js';
 import { UISystem } from './hivelord/ui/UISystem.js';
 import { initPresession } from './hivelord/ui/presession.js';
 import { PanelSystem } from './panel.js';
@@ -29,6 +30,7 @@ World.create(
   world.registerSystem(ToySystem);
   world.registerSystem(HivelordGameSystem);
   world.registerSystem(HivelordInputSystem);
+  world.registerSystem(AssetSystem);
   world.registerSystem(UISystem);
   world.registerSystem(DebugOverlaySystem);
   initPresession(world);
