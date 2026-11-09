@@ -8,5 +8,6 @@
 import { defineComponents } from '@iwsdk/core';
 import { RealityDial } from './reality-dial-component.js';
 import { Robot } from './robot-component.js';
+import { Toy } from './toy-component.js';
 
-export default defineComponents([RealityDial, Robot]);
+export default defineComponents([RealityDial, Robot, Toy]);

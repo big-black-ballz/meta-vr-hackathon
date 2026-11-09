@@ -180,6 +180,28 @@ The shell, Cloud group and dial are re-anchored to the player's current head
 position, so starting or ending the transition after walking uses the new
 location instead of the original room center.
 
+## Physics toys
+
+`world.features.physics` is on at 60 Hz with worker execution. Detected
+horizontal and vertical `XRPlane` surfaces become static box colliders; planes
+labeled bed/couch/sofa are soft (low restitution, high friction), while tables,
+floors and walls are hard. If no planes are found within 3 seconds, a virtual
+floor, bed, bench, shelf and toy tray are added.
+
+- **Grab:** pinch/squeeze a toy from the tray. Release to throw with hand velocity.
+- **Place gently:** while holding a toy, pinch with the other hand for ~0.5 s over
+  a surface; the toy snaps to rest with no bounce.
+- **Pull tray:** double-pinch with the left hand, or press `T`.
+- **Reset toys:** pinch with both hands for ~0.8 s, or press `R`.
+- **Spawn extra toy:** press `N` (for cap testing).
+- Active toys are capped at 30; the oldest fades out when exceeded.
+- Cloud outlines appear on surfaces that hold toys as the Reality Dial moves
+  toward Cloud.
+
+Real-plane collider placement and labels were code-reviewed but cannot be
+verified in IWER, which has no room scan. The virtual fallback is verified.
+Anchor-based toy persistence is intentionally skipped.
+
 Cloud environment:
 
 - **Gradient dome** — a large inverted sphere: dark violet at the top, deep blue

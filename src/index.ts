@@ -10,6 +10,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { PanelSystem } from './panel.js';
 import { RealityDialSystem } from './reality-dial.js';
 import { RobotSystem } from './robot.js';
+import { ToySystem } from './toys.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -18,4 +19,5 @@ World.create(
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(RealityDialSystem);
+  world.registerSystem(ToySystem);
 });
