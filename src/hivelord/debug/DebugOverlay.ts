@@ -235,6 +235,16 @@ export class DebugOverlaySystem extends createSystem({
       28,
       450,
     );
+    ctx.fillText(
+      'G gallery   V contrast   I fx   O unlock   J wrist   K hands   L error',
+      28,
+      466,
+    );
+    ctx.fillText(
+      'N opacity   M contrast   C chapter   P pause   H hide',
+      28,
+      482,
+    );
     texture.needsUpdate = true;
   }
 

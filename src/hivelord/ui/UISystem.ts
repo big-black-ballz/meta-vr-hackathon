@@ -2,6 +2,7 @@ import {
   createSystem,
   Pressed,
   Quaternion,
+  UIKitMLAsset,
   Vector3,
   VisibilityState,
 } from '@iwsdk/core';
@@ -31,8 +32,11 @@ import {
 } from './screens-system.js';
 import { HUD } from './hud.js';
 import { WristMenu } from './wrist.js';
+import { GalleryScreen } from './gallery.js';
+import { runContrastCheck } from './contrast.js';
 import { settings } from './settings.js';
 import { setMasterVolume, uiSounds } from './sounds.js';
+import { setHighContrast, setPanelOpacity, THEME } from './theme.js';
 import { getPlaceholderSkills, unlockSkill } from './placeholderSkills.js';
 import {
   setErrorMessage,
@@ -99,9 +103,14 @@ export class UISystem extends createSystem({
   private fakeTrackingLost = false;
   private bannerPauseHeld = false;
   private prevFocus: ScreenId | null = null;
+  private welcomePanel: UIKitMLAsset | null = null;
 
   init(): void {
     settings.load();
+    setHighContrast(settings.get('highContrast'));
+    if (!settings.get('highContrast')) {
+      setPanelOpacity(settings.get('uiOpacity'));
+    }
     setMasterVolume(settings.get('master'));
     const detector = getGestureDetector();
     if (detector != null) {
@@ -117,6 +126,7 @@ export class UISystem extends createSystem({
     const skills = new SkillsScreen();
     const confirm = new ConfirmScreen();
     const error = new ErrorScreen();
+    const gallery = new GalleryScreen();
     const screens: UIScreen[] = [
       start,
       loading,
@@ -126,6 +136,7 @@ export class UISystem extends createSystem({
       skills,
       confirm,
       error,
+      gallery,
     ];
     const withControls = new Map<ScreenId, () => Control[]>([
       ['start', () => start.controls],
@@ -136,6 +147,7 @@ export class UISystem extends createSystem({
       ['skills', () => skills.controls],
       ['confirm', () => confirm.controls],
       ['error', () => error.controls],
+      ['gallery', () => gallery.controls],
     ]);
     for (const screen of screens) {
       screen.build(world);
@@ -154,6 +166,7 @@ export class UISystem extends createSystem({
 
     this.hud.build(world);
     this.wrist.build(world, () => undefined);
+    this.welcomePanel = world.getSceneObject<UIKitMLAsset>('welcome-panel') ?? null;
 
     this.cleanupFuncs.push(
       this.queries.hits.subscribe('qualify', (entity) => {
@@ -181,6 +194,20 @@ export class UISystem extends createSystem({
         if (key === 'master' && typeof value === 'number') {
           setMasterVolume(value);
         }
+        if (key === 'uiOpacity') {
+          setHighContrast(settings.get('highContrast'));
+          if (!settings.get('highContrast')) {
+            setPanelOpacity(settings.get('uiOpacity'));
+          }
+          this.redrawAllPanels();
+        }
+        if (key === 'highContrast') {
+          setHighContrast(settings.get('highContrast'));
+          if (!settings.get('highContrast')) {
+            setPanelOpacity(settings.get('uiOpacity'));
+          }
+          this.redrawAllPanels();
+        }
       }),
     );
     document.addEventListener('visibilitychange', this.onDocVisibility);
@@ -188,6 +215,12 @@ export class UISystem extends createSystem({
       document.removeEventListener('visibilitychange', this.onDocVisibility),
     );
     console.info('[Hivelord] UISystem ready');
+    console.info(
+      `[Hivelord] UI opacity ${THEME.panelOpacity.toFixed(2)} highContrast ${THEME.highContrast}`,
+    );
+    if (DEBUG) {
+      runContrastCheck();
+    }
   }
 
   private onDocVisibility = (): void => {
@@ -211,8 +244,15 @@ export class UISystem extends createSystem({
     camera.getWorldQuaternion(headQuat);
   }
 
-  private placeFocusedScreen(): void {
-    const focus = this.manager.focus();
+  private redrawAllPanels(): void {
+    for (const entry of this.entries.values()) {
+      entry.screen.panel?.setDirty();
+    }
+    this.wrist.panel?.setDirty();
+    this.hud.markDirty();
+  }
+
+  private placeFocusedScreen(): void {    const focus = this.manager.focus();
     if (focus == null) {
       return;
     }
@@ -531,6 +571,23 @@ export class UISystem extends createSystem({
         });
       }
     }
+    if (down('KeyG')) {
+      this.manager.show('gallery');
+    }
+    if (down('KeyV')) {
+      runContrastCheck();
+    }
+    if (down('KeyN')) {
+      const order = [0.8, 0.88, 0.95];
+      const index = order.findIndex(
+        (v) => Math.abs(v - settings.get('uiOpacity')) < 0.001,
+      );
+      const next = order[(index + 1) % 3] ?? 0.88;
+      settings.set('uiOpacity', next);
+    }
+    if (down('KeyM')) {
+      settings.set('highContrast', !settings.get('highContrast'));
+    }
     if (down('KeyJ')) {
       this.wrist.toggleForced();
     }
@@ -571,7 +628,7 @@ export class UISystem extends createSystem({
 
   private pressPrimary(): void {
     const list = this.actionableControls();
-    const first = list.find((c) => c.hover) ?? list[0];
+    const first = list.find((c) => c.defaultFocus);
     if (first == null) {
       return;
     }
@@ -598,8 +655,17 @@ export class UISystem extends createSystem({
       world.visibilityState.peek() !== VisibilityState.NonImmersive;
     if (immersive && !this.wasImmersive) {
       hidePresession();
+      if (this.welcomePanel != null) {
+        this.welcomePanel.visible = false;
+      }
+      // The head pose changes when the immersive session starts; re-place the
+      // focused screen so it is not left at the browser camera pose.
+      this.placeFocusedScreen();
     }
     if (!immersive && this.wasImmersive) {
+      if (this.welcomePanel != null) {
+        this.welcomePanel.visible = true;
+      }
       if (
         gameState.getState() === GameStates.Playing ||
         gameState.getState() === GameStates.Paused

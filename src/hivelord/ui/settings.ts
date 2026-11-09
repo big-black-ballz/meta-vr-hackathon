@@ -15,6 +15,8 @@ export interface HivelordSettings {
   subtitleBg: SubtitleBg;
   dominantHand: DominantHandOption;
   quality: QualityLevel;
+  uiOpacity: number;
+  highContrast: boolean;
   reduceFlashing: boolean;
   vignette: boolean;
   debugOverlay: boolean;
@@ -31,6 +33,8 @@ const DEFAULTS: HivelordSettings = {
   subtitleBg: 'light',
   dominantHand: 'auto',
   quality: 'medium',
+  uiOpacity: 0.88,
+  highContrast: false,
   reduceFlashing: false,
   vignette: true,
   debugOverlay: true,

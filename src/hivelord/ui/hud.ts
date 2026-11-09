@@ -146,6 +146,17 @@ export class HUD {
     this.banner?.setDirty();
   }
 
+  /** Re-render all HUD panels after a theme change. */
+  markDirty(): void {
+    this.ability?.setDirty();
+    this.objective?.setDirty();
+    this.toasts?.setDirty();
+    this.subtitles?.setDirty();
+    this.banner?.setDirty();
+    this.charge?.setDirty();
+    this.stun?.setDirty();
+  }
+
   update(
     dt: number,
     headPos: Vector3,

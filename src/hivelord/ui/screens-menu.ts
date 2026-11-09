@@ -20,11 +20,15 @@ function layoutButtons(
   labels: string[],
   canvasW: number,
   top: number,
+  extraGapBeforeLast = 0,
 ): void {
   const bw = canvasW - 96;
   const bh = THEME.buttonHPx;
   let y = top;
   for (let i = 0; i < ids.length; i++) {
+    if (i === ids.length - 1 && i > 0) {
+      y += extraGapBeforeLast;
+    }
     controls.push(makeControl(ids[i], 'button', 48, y, bw, bh, labels[i]));
     y += bh + THEME.buttonGapPx;
   }
@@ -68,10 +72,12 @@ export class StartScreen extends UIScreen {
       ],
       this.panel.widthPx,
       150,
+      28,
     );
     const begin = this.controls.find((c) => c.id === 'begin');
     if (begin != null) {
       begin.variant = 'primary';
+      begin.defaultFocus = true;
     }
   }
 
@@ -200,6 +206,7 @@ export class ChapterScreen extends UIScreen {
     const cont = this.controls.find((c) => c.id === 'continue');
     if (cont != null) {
       cont.variant = 'primary';
+      cont.defaultFocus = true;
     }
   }
 

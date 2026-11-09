@@ -13,6 +13,7 @@ import {
 import { STRINGS } from './strings.js';
 import { THEME } from './theme.js';
 import { drawHex, drawLock, drawWarnTriangle } from './draw/icons.js';
+import { drawPanel, drawTitle } from './draw/panel.js';
 import {
   getErrorMessage,
   takePendingConfirm,
@@ -44,7 +45,10 @@ export class PauseScreen extends UIScreen {
       STRINGS.pauseExit,
     ];
     const hM =
-      (104 + labels.length * (THEME.buttonHPx + THEME.buttonGapPx)) / UI_PPM;
+      (104 +
+        labels.length * (THEME.buttonHPx + THEME.buttonGapPx) +
+        28) /
+      UI_PPM;
     this.panel = new CanvasPanel(world, 'hivelord-ui-pause', PANEL_W_M, hM);
     const bw = this.panel.widthPx - 96;
     let y = 104;
@@ -57,6 +61,9 @@ export class PauseScreen extends UIScreen {
       'exit',
     ];
     for (let i = 0; i < ids.length; i++) {
+      if (i === ids.length - 1 && i > 0) {
+        y += 28;
+      }
       this.controls.push(
         makeControl(ids[i], 'button', 48, y, bw, THEME.buttonHPx, labels[i]),
       );
@@ -65,6 +72,7 @@ export class PauseScreen extends UIScreen {
     const resume = this.controls.find((c) => c.id === 'resume');
     if (resume != null) {
       resume.variant = 'primary';
+      resume.defaultFocus = true;
     }
   }
 
@@ -122,6 +130,12 @@ export class SettingsScreen extends UIScreen {
     { key: 'subtitleBg', label: STRINGS.settingsSubtitleBg, kind: 'stepper' },
     { key: 'dominantHand', label: STRINGS.settingsDominant, kind: 'stepper' },
     { key: 'quality', label: STRINGS.settingsQuality, kind: 'stepper' },
+    { key: 'uiOpacity', label: STRINGS.settingsUiOpacity, kind: 'stepper' },
+    {
+      key: 'highContrast',
+      label: STRINGS.settingsHighContrast,
+      kind: 'toggle',
+    },
     { key: 'reduceFlashing', label: STRINGS.settingsReduceFlash, kind: 'toggle' },
     { key: 'vignette', label: STRINGS.settingsVignette, kind: 'toggle' },
     { key: 'debugOverlay', label: STRINGS.settingsDebugOverlay, kind: 'toggle' },
@@ -189,6 +203,12 @@ export class SettingsScreen extends UIScreen {
           break;
         case 'quality':
           c.value = snap.quality;
+          break;
+        case 'uiOpacity':
+          c.value = `${Math.round(snap.uiOpacity * 100)}%`;
+          break;
+        case 'highContrast':
+          c.value = snap.highContrast === true;
           break;
         default:
           break;
@@ -261,6 +281,15 @@ export class SettingsScreen extends UIScreen {
         settings.set('quality', next);
         break;
       }
+      case 'uiOpacity': {
+        const order = [0.8, 0.88, 0.95];
+        const index = order.findIndex(
+          (v) => Math.abs(v - snap.uiOpacity) < 0.001,
+        );
+        const next = order[(index + dir + 3) % 3] ?? 0.88;
+        settings.set('uiOpacity', next);
+        break;
+      }
       default:
         break;
     }
@@ -280,6 +309,9 @@ export class SettingsScreen extends UIScreen {
         break;
       case 'debugOverlay':
         settings.set('debugOverlay', !settings.get('debugOverlay'));
+        break;
+      case 'highContrast':
+        settings.set('highContrast', !settings.get('highContrast'));
         break;
       default:
         break;
@@ -422,6 +454,7 @@ export class ConfirmScreen extends UIScreen {
     }
     for (const c of this.controls) {
       c.hover = c.id === 'cancel';
+      c.defaultFocus = c.id === 'cancel';
     }
     this.panel?.setDirty();
   }
@@ -487,6 +520,7 @@ export class ErrorScreen extends UIScreen {
       STRINGS.errorExit,
     );
     this.controls = [msg, retry, exit];
+    retry.defaultFocus = true;
   }
 
   onShow(): void {
@@ -501,14 +535,9 @@ export class ErrorScreen extends UIScreen {
     if (this.panel == null) {
       return;
     }
-    drawChrome(ctx, this.panel.widthPx, this.panel.heightPx, STRINGS.errorTitle);
-    drawWarnTriangle(
-      ctx,
-      this.panel.widthPx / 2,
-      108,
-      30,
-      THEME.warning,
-    );
+    drawPanel(ctx, this.panel.widthPx, this.panel.heightPx);
+    drawWarnTriangle(ctx, this.panel.widthPx / 2, 30, 26, THEME.warning);
+    drawTitle(ctx, this.panel.widthPx, STRINGS.errorTitle, false, 72);
     for (const c of this.controls) {
       drawControl(ctx, c);
     }

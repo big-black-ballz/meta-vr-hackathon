@@ -15,7 +15,8 @@ export type ScreenId =
   | 'skills'
   | 'chapter'
   | 'confirm'
-  | 'error';
+  | 'error'
+  | 'gallery';
 
 /** Pixels per metre on UI canvases. */
 export const UI_PPM = 1230;

@@ -55,6 +55,7 @@ export function drawTitle(
   w: number,
   title: string,
   glow: boolean,
+  titleY = 52,
 ): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -64,13 +65,13 @@ export function drawTitle(
     ctx.shadowColor = withAlpha(THEME.primary, 0.35);
     ctx.shadowBlur = 24;
     ctx.fillStyle = THEME.primary;
-    ctx.fillText(title, w / 2, 52);
+    ctx.fillText(title, w / 2, titleY);
     ctx.restore();
   } else {
     ctx.fillStyle = THEME.primary;
-    ctx.fillText(title, w / 2, 52);
+    ctx.fillText(title, w / 2, titleY);
   }
-  const y = 92;
+  const y = titleY + 40;
   ctx.strokeStyle = withAlpha(THEME.primary, 0.4);
   ctx.lineWidth = 2;
   ctx.beginPath();

@@ -11,6 +11,9 @@
  * tokens without pulling in UI logic.
  */
 
+/** Mid-grey room backdrop used by the contrast checker. */
+export const CONTRAST_BACKDROP = '#808080';
+
 export interface ThemeTokens {
   base: string;
   panel: string;
@@ -53,7 +56,7 @@ const BASE_TOKENS: ThemeTokens = {
   accentText: '#9D86FF',
   text: '#F7F1E5',
   textMuted: '#B0A58F',
-  textFaint: '#8C826C',
+  textFaint: '#9C917A',
   locked: '#4F473A',
   success: '#6BE08A',
   warning: '#FF7A45',

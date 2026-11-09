@@ -191,6 +191,12 @@ renderer imports; systems import the declarations, never the reverse.
 
 ## Conventions
 
+- **UI is Obsidian Gold**: all Hivelord UI colors come from
+  `src/hivelord/ui/theme.ts` (obsidian panels, restrained gold interaction,
+  violet story text, orange warnings, red stun/destructive, green ready/
+  success). No hard-coded UI colors outside that file; run
+  `npm run check:ui-colors`. World effects (bots, sky, dial, surface outlines)
+  are separate and stay violet/gold accented.
 - Systems use queries, never manually tracked entity arrays.
 - Never allocate in `update()`. Allocate in `init()` as class properties.
 - Prefer `queries.x.subscribe('qualify', ...)` over polling state each frame.

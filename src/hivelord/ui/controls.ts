@@ -38,6 +38,8 @@ export interface Control {
   progress: number;
   /** button hierarchy: primary CTA, secondary default, destructive. */
   variant: ButtonVariant;
+  /** Dev-key B activates this control (one per screen). */
+  defaultFocus: boolean;
   hover: boolean;
   pressed: boolean;
 }
@@ -66,6 +68,7 @@ export function makeControl(
     options: [],
     progress: 0,
     variant,
+    defaultFocus: false,
     hover: false,
     pressed: false,
   };
