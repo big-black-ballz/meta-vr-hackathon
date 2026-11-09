@@ -13,6 +13,7 @@ import {
 } from '@iwsdk/core';
 import { DEBUG, DEBUG_GESTURE_VISUALS } from '../core/config.js';
 import { timeControl } from '../core/TimeControl.js';
+import { getInputContext } from '../ui/UIManager.js';
 import {
   FORCE_GESTURE_KEYS,
   FORCE_LEFT_MODIFIER_KEYS,
@@ -90,6 +91,7 @@ export class HivelordInputSystem extends createSystem({}) {
     this.detector.syncInputSources(leftSource, rightSource);
 
     const forced = this.readForcedGestures();
+    this.detector.gameplaySuspended = getInputContext() === 'ui';
     this.detector.update(
       frame,
       referenceSpace,

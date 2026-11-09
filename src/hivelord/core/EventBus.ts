@@ -26,6 +26,19 @@ export interface HivelordEventMap {
   ChapterCompleted: { chapterId: string };
   TrackingLost: { hand: GestureHand };
   TrackingRestored: { hand: GestureHand };
+  UIOpened: { screen: string };
+  UIClosed: { screen: string };
+  InputContextChanged: { context: 'gameplay' | 'ui' };
+  ButtonPressed: { id: string; screen: string };
+  SettingChanged: { key: string; value: string | number | boolean };
+  SkillUnlocked: { skillId: string };
+  ObjectiveChanged: { text: string };
+  ToastRequested: { text: string; kind: 'info' | 'success' | 'warning' };
+  SubtitleRequested: {
+    speaker: string;
+    text: string;
+    durationSeconds?: number;
+  };
 }
 
 type Handler<T> = (payload: T) => void;

@@ -19,6 +19,8 @@ import {
 } from '../core/config.js';
 import { gameState } from '../core/GameState.js';
 import { timeControl } from '../core/TimeControl.js';
+import { settings } from '../ui/settings.js';
+import { getUIState } from '../ui/UISystem.js';
 import type { GestureDetector } from '../input/GestureDetector.js';
 import type { HandState } from '../input/HandState.js';
 import { GESTURE_LABELS } from '../input/GestureMap.js';
@@ -102,10 +104,11 @@ export class DebugOverlaySystem extends createSystem({
 
     if (this.input.keyboard?.getKeyDown(DEBUG_OVERLAY_KEY) === true) {
       this.visible = !this.visible;
-      this.panel.visible = this.visible;
     }
+    const shown = this.visible && settings.get('debugOverlay');
+    this.panel.visible = shown;
 
-    if (!this.visible) {
+    if (!shown) {
       return;
     }
 
@@ -192,10 +195,11 @@ export class DebugOverlaySystem extends createSystem({
       ctx.fillText('HANDS LOST', 28, 84);
     } else {
       const dominant = detector?.getDominantHand() ?? null;
+      const ui = getUIState();
       ctx.fillStyle = 'rgba(150, 170, 190, 0.8)';
       ctx.font = '500 14px system-ui, sans-serif';
       ctx.fillText(
-        `dominant ${dominant ?? 'auto'}   gesture key path: detection + debounce`,
+        `dominant ${dominant ?? 'auto'}   ui ${ui.screen}   ctx ${ui.context}`,
         28,
         84,
       );
@@ -222,12 +226,12 @@ export class DebugOverlaySystem extends createSystem({
     ctx.fillStyle = 'rgba(150, 170, 190, 0.7)';
     ctx.font = '500 13px system-ui, sans-serif';
     ctx.fillText(
-      '1 pinch  2 fist  3 flat palm  4 cupped  5 open palm  6 stop',
+      '1-6 gestures   B primary   H hide   P pause',
       28,
       428,
     );
     ctx.fillText(
-      '1-6 right hand   Shift+1-6 left hand   H hide   P pause',
+      'Q start W pause E settings R skills T toast Y subt U obj',
       28,
       450,
     );

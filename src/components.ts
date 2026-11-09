@@ -6,8 +6,9 @@
  */
 
 import { defineComponents } from '@iwsdk/core';
+import { UIHit } from './hivelord/ui/UIHitComponent.js';
 import { RealityDial } from './reality-dial-component.js';
 import { Robot } from './robot-component.js';
 import { Toy } from './toy-component.js';
 
-export default defineComponents([RealityDial, Robot, Toy]);
+export default defineComponents([RealityDial, Robot, Toy, UIHit]);

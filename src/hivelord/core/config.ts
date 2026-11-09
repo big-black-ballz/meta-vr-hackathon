@@ -25,3 +25,16 @@ export const DEBUG_OVERLAY_UPDATE_HZ = 4;
 
 // Optional dev-only fingertip spheres and palm-normal lines.
 export const DEBUG_GESTURE_VISUALS = true;
+
+// Quality levels for later load scaling (botCapMultiplier, effectsLevel).
+// Rendering is unchanged; later levels read these values.
+export const QUALITY_BOT_CAP: Record<string, number> = {
+  low: 0.5,
+  medium: 1,
+  high: 1.5,
+};
+export const QUALITY_EFFECTS: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};

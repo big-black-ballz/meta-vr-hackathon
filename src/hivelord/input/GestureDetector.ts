@@ -61,6 +61,13 @@ export class GestureDetector {
   private dominantSetting: DominantHandSetting = 'auto';
   private dominantHand: HandId | null = null;
 
+  /**
+   * When true, gameplay gestures are suspended (a blocking UI screen owns
+   * input). Tracking, metrics and release transitions keep running; no new
+   * gesture becomes Active and no gameplay events emit.
+   */
+  gameplaySuspended = false;
+
   private leftWasTracked = false;
   private rightWasTracked = false;
   private gameTime = 0;
@@ -110,7 +117,11 @@ export class GestureDetector {
     }
 
     const previousStopActive = this.stopTracker.primary != null;
-    this.updateStop(forcedStop, headPosition, headForward);
+    this.updateStop(
+      forcedStop && !this.gameplaySuspended,
+      headPosition,
+      headForward,
+    );
 
     if (this.stopTracker.primary != null) {
       // Stop overrides both hands. End their single-hand gestures cleanly on
@@ -329,9 +340,12 @@ export class GestureDetector {
     forced: GestureId | null,
   ): GestureId | null {
     if (forced != null) {
+      if (this.gameplaySuspended) {
+        return null;
+      }
       return forced === 'stop' ? null : forced;
     }
-    if (!hand.tracked) {
+    if (!hand.tracked || this.gameplaySuspended) {
       return null;
     }
 

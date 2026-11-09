@@ -17,7 +17,7 @@ const LEGAL_TRANSITIONS: Record<GameStateId, readonly GameStateId[]> = {
   Playing: [GameStates.Paused, GameStates.ChapterEnd, GameStates.Error],
   Paused: [GameStates.Playing, GameStates.Error],
   ChapterEnd: [GameStates.Menu, GameStates.Error],
-  Error: [],
+  Error: [GameStates.Menu],
 };
 
 type StateHandler = (from: GameStateId, to: GameStateId, reason?: string) => void;

@@ -1,10 +1,5 @@
 import { createSystem } from '@iwsdk/core';
-import {
-  AUTO_ADVANCE_ON_BOOT,
-  BOOT_TO_MENU_SECONDS,
-  MENU_TO_PLAYING_SECONDS,
-  PAUSE_KEY,
-} from './config.js';
+import { AUTO_ADVANCE_ON_BOOT, BOOT_TO_MENU_SECONDS, PAUSE_KEY } from './config.js';
 import { GameStates, gameState } from './GameState.js';
 import { timeControl } from './TimeControl.js';
 
@@ -28,16 +23,13 @@ export class HivelordGameSystem extends createSystem({}) {
     this.elapsed += delta;
 
     if (AUTO_ADVANCE_ON_BOOT) {
+      // Boot advances to Menu automatically (Loading screen drives the
+      // timing). Menu waits for Begin: starting gameplay is a player choice.
       if (
         gameState.getState() === GameStates.Boot &&
         this.elapsed >= BOOT_TO_MENU_SECONDS
       ) {
         gameState.setState(GameStates.Menu, 'auto boot complete');
-      } else if (
-        gameState.getState() === GameStates.Menu &&
-        this.elapsed >= BOOT_TO_MENU_SECONDS + MENU_TO_PLAYING_SECONDS
-      ) {
-        gameState.setState(GameStates.Playing, 'auto menu complete');
       }
     }
 
